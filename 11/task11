@@ -1,0 +1,236 @@
+using System;
+using System.Data;
+
+class Program
+{
+    static void Main()
+    {
+        try
+        {
+            DataSet ds = CreateOrderDataSet();
+            FillTestData(ds);
+            CreateCascadeRelationships(ds);
+            
+            Console.WriteLine("=== ЗАДАНИЕ 11: DeleteRule + UpdateRule CASCADE ===\n");
+            
+            Console.WriteLine("1. ИСХОДНЫЕ ДАННЫЕ:");
+            PrintFullHierarchy(ds);
+            Console.WriteLine();
+            
+            Console.WriteLine("2. ДОБАВЛЕНИЕ НОВОГО ЗАКАЗЧИКА:");
+            AddNewCustomer(ds);
+            Console.WriteLine();
+            
+            Console.WriteLine("3. УДАЛЕНИЕ ЗАКАЗЧИКА (каскад):");
+            DeleteCustomerCascade(ds, 2);
+            Console.WriteLine();
+            
+            Console.WriteLine("4. ИЗМЕНЕНИЕ ID ЗАКАЗЧИКА (каскад):");
+            UpdateCustomerIDCascade(ds, 1, 101);
+            Console.WriteLine();
+            
+            Console.WriteLine("5. УДАЛЕНИЕ ЗАКАЗА (каскад):");
+            DeleteOrderCascade(ds, 3);
+            Console.WriteLine();
+            
+            Console.WriteLine("6. ИЗМЕНЕНИЕ ID ЗАКАЗА (каскад):");
+            UpdateOrderIDCascade(ds, 1, 11);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"ОШИБКА: {ex.Message}");
+        }
+    }
+    
+    static DataSet CreateOrderDataSet()
+    {
+        DataSet ds = new DataSet("OrderDB");
+        
+        // Заказчики
+        DataTable customers = new DataTable("Заказчики");
+        customers.Columns.Add("CustomerID", typeof(int));
+        customers.Columns.Add("CustomerName", typeof(string));
+        customers.Columns.Add("Email", typeof(string));
+        customers.PrimaryKey = new DataColumn[] { customers.Columns["CustomerID"] };
+        
+        // Заказы
+        DataTable orders = new DataTable("Заказы");
+        orders.Columns.Add("OrderID", typeof(int));
+        orders.Columns.Add("OrderDate", typeof(DateTime));
+        orders.Columns.Add("CustomerID", typeof(int));
+        orders.Columns.Add("Total", typeof(decimal));
+        orders.PrimaryKey = new DataColumn[] { orders.Columns["OrderID"] };
+        
+        // Детали заказов
+        DataTable orderDetails = new DataTable("ДеталиЗаказов");
+        orderDetails.Columns.Add("DetailID", typeof(int));
+        orderDetails.Columns.Add("OrderID", typeof(int));
+        orderDetails.Columns.Add("ProductID", typeof(int));
+        orderDetails.Columns.Add("Quantity", typeof(int));
+        orderDetails.Columns.Add("Price", typeof(decimal));
+        orderDetails.PrimaryKey = new DataColumn[] { orderDetails.Columns["DetailID"] };
+        
+        ds.Tables.Add(customers);
+        ds.Tables.Add(orders);
+        ds.Tables.Add(orderDetails);
+        
+        return ds;
+    }
+    
+    static void FillTestData(DataSet ds)
+    {
+        DataTable customers = ds.Tables["Заказчики"];
+        DataTable orders = ds.Tables["Заказы"];
+        DataTable details = ds.Tables["ДеталиЗаказов"];
+        
+        customers.Rows.Add(1, "Иван Петров", "ivan@example.com");
+        customers.Rows.Add(2, "Мария Сидорова", "maria@example.com");
+        customers.Rows.Add(3, "Алексей Новиков", "alex@example.com");
+        
+        orders.Rows.Add(1, new DateTime(2024, 1, 15), 1, 12500m);
+        orders.Rows.Add(2, new DateTime(2024, 1, 20), 1, 8500m);
+        orders.Rows.Add(3, new DateTime(2024, 2, 5), 2, 21000m);
+        
+        details.Rows.Add(1, 1, 101, 2, 59990m);
+        details.Rows.Add(2, 1, 102, 1, 4990m);
+        details.Rows.Add(3, 2, 103, 3, 2490m);
+        details.Rows.Add(4, 3, 104, 1, 129990m);
+        details.Rows.Add(5, 3, 105, 2, 89990m);
+    }
+    
+    static void CreateCascadeRelationships(DataSet ds)
+    {
+        DataTable customers = ds.Tables["Заказчики"];
+        DataTable orders = ds.Tables["Заказы"];
+        DataTable details = ds.Tables["ДеталиЗаказов"];
+        
+        // Заказчики → Заказы (Cascade Delete/Update)
+        ForeignKeyConstraint custOrderFK = new ForeignKeyConstraint(
+            "FK_Orders_Customers",
+            customers.Columns["CustomerID"], orders.Columns["CustomerID"]
+        );
+        custOrderFK.DeleteRule = Rule.Cascade;
+        custOrderFK.UpdateRule = Rule.Cascade;
+        orders.Constraints.Add(custOrderFK);
+        
+        DataRelation custOrderRel = new DataRelation("Rel_Customers_Orders",
+            customers.Columns["CustomerID"], orders.Columns["CustomerID"]);
+        ds.Relations.Add(custOrderRel);
+        
+        // Заказы → Детали (Cascade Delete/Update)
+        ForeignKeyConstraint orderDetailFK = new ForeignKeyConstraint(
+            "FK_OrderDetails_Orders",
+            orders.Columns["OrderID"], details.Columns["OrderID"]
+        );
+        orderDetailFK.DeleteRule = Rule.Cascade;
+        orderDetailFK.UpdateRule = Rule.Cascade;
+        details.Constraints.Add(orderDetailFK);
+        
+        DataRelation orderDetailRel = new DataRelation("Rel_Orders_Details",
+            orders.Columns["OrderID"], details.Columns["OrderID"]);
+        ds.Relations.Add(orderDetailRel);
+    }
+    
+    static void AddNewCustomer(DataSet ds)
+    {
+        DataTable customers = ds.Tables["Заказчики"];
+        customers.Rows.Add(4, "Новый заказчик", "new@example.com");
+        
+        Console.WriteLine("✓ Новый заказчик добавлен (ID=4)");
+        Console.WriteLine($"Всего заказчиков: {customers.Rows.Count}");
+    }
+    
+    static void DeleteCustomerCascade(DataSet ds, int customerID)
+    {
+        DataTable customers = ds.Tables["Заказчики"];
+        DataRow customer = customers.Rows.Find(customerID);
+        
+        if (customer != null)
+        {
+            Console.WriteLine($"УДАЛЯЕМ заказчика ID={customerID}: {customer["CustomerName"]}");
+            customer.Delete();
+            ds.AcceptChanges();
+            
+            Console.WriteLine("✓ Каскадно удалены:");
+            Console.WriteLine($"  - Заказчик ID={customerID}");
+            Console.WriteLine($"  - Все его заказы");
+            Console.WriteLine($"  - Все детали заказов");
+        }
+    }
+    
+    static void UpdateCustomerIDCascade(DataSet ds, int oldID, int newID)
+    {
+        DataTable customers = ds.Tables["Заказчики"];
+        DataRow customer = customers.Rows.Find(oldID);
+        
+        if (customer != null)
+        {
+            Console.WriteLine($"ИЗМЕНЯЕМ ID заказчика {oldID} → {newID}");
+            customer["CustomerID"] = newID;
+            ds.AcceptChanges();
+            
+            Console.WriteLine($"✓ Каскадно обновлены:");
+            Console.WriteLine($"  - Заказчик: {oldID} → {newID}");
+            Console.WriteLine($"  - Все связанные заказы: {oldID} → {newID}");
+        }
+    }
+    
+    static void DeleteOrderCascade(DataSet ds, int orderID)
+    {
+        DataTable orders = ds.Tables["Заказы"];
+        DataRow order = orders.Rows.Find(orderID);
+        
+        if (order != null)
+        {
+            Console.WriteLine($"УДАЛЯЕМ заказ ID={orderID}");
+            order.Delete();
+            ds.AcceptChanges();
+            
+            Console.WriteLine($"✓ Каскадно удалены:");
+            Console.WriteLine($"  - Заказ ID={orderID}");
+            Console.WriteLine($"  - Все его детали");
+        }
+    }
+    
+    static void UpdateOrderIDCascade(DataSet ds, int oldID, int newID)
+    {
+        DataTable orders = ds.Tables["Заказы"];
+        DataRow order = orders.Rows.Find(oldID);
+        
+        if (order != null)
+        {
+            Console.WriteLine($"ИЗМЕНЯЕМ ID заказа {oldID} → {newID}");
+            order["OrderID"] = newID;
+            ds.AcceptChanges();
+            
+            Console.WriteLine($"✓ Каскадно обновлены:");
+            Console.WriteLine($"  - Заказ: {oldID} → {newID}");
+            Console.WriteLine($"  - Все детали заказа: {oldID} → {newID}");
+        }
+    }
+    
+    static void PrintFullHierarchy(DataSet ds)
+    {
+        Console.WriteLine("ИЕРАРХИЯ ДАННЫХ:");
+        Console.WriteLine("═══════════════════════════════════════════════════════");
+        
+        DataTable customers = ds.Tables["Заказчики"];
+        Console.WriteLine($"\n📊 ЗАКАЗЧИКИ ({customers.Rows.Count}):");
+        foreach (DataRow cust in customers.Rows)
+        {
+            Console.WriteLine($"  {cust["CustomerID"]}. {cust["CustomerName"]} ({cust["Email"]})");
+            
+            DataRow[] orders = cust.GetChildRows("Rel_Customers_Orders");
+            foreach (DataRow order in orders)
+            {
+                Console.WriteLine($"    └── Заказ {order["OrderID"]} ({((DateTime)order["OrderDate"]):dd.MM.yy}, {((decimal)order["Total"]):N0}₽)");
+                
+                DataRow[] details = order.GetChildRows("Rel_Orders_Details");
+                foreach (DataRow detail in details)
+                {
+                    Console.WriteLine($"        └── Деталь {detail["DetailID"]}: Товар {detail["ProductID"]}, {detail["Quantity"]}x{((decimal)detail["Price"]):N0}₽");
+                }
+            }
+        }
+    }
+}
