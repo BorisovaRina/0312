@@ -1,0 +1,177 @@
+using System;
+using System.Data;
+
+class Program
+{
+    static void Main()
+    {
+        try
+        {
+            DataSet ds = CreateDataSet();
+
+            FillTestData(ds);
+
+            CreateRelationship(ds);
+
+            Console.WriteLine("=== ЗАДАНИЕ 1: ПРОСТОЕ ОТНОШЕНИЕ ОДИН-КО-МНОГИМ ===\n");
+
+            PrintRelationInfo(ds);
+            Console.WriteLine();
+
+            PrintHierarchicalStructure(ds);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"ОШИБКА: {ex.Message}");
+        }
+    }
+
+    static DataSet CreateDataSet()
+    {
+        DataSet ds = new DataSet("ShopDB");
+
+        // Таблица Категории
+        DataTable categories = new DataTable("Категории");
+        categories.Columns.Add("CategoryID", typeof(int));
+        categories.Columns.Add("CategoryName", typeof(string));
+        categories.Columns.Add("Description", typeof(string));
+        categories.PrimaryKey = new DataColumn[] { categories.Columns["CategoryID"] };
+
+        // Таблица Товары
+        DataTable products = new DataTable("Товары");
+        products.Columns.Add("ProductID", typeof(int));
+        products.Columns.Add("ProductName", typeof(string));
+        products.Columns.Add("Price", typeof(decimal));
+        products.Columns.Add("CategoryID", typeof(int));
+        products.PrimaryKey = new DataColumn[] { products.Columns["ProductID"] };
+
+        ds.Tables.Add(categories);
+        ds.Tables.Add(products);
+
+        return ds;
+    }
+
+    // Заполнение тестовыми данными
+    static void FillTestData(DataSet ds)
+    {
+        DataTable categories = ds.Tables["Категории"];
+        DataTable products = ds.Tables["Товары"];
+
+        // Категории
+        categories.Rows.Add(1, "Электроника", "Смартфоны, планшеты, гаджеты");
+        categories.Rows.Add(2, "Одежда", "Мужская и женская одежда");
+        categories.Rows.Add(3, "Книги", "Художественная и учебная литература");
+        categories.Rows.Add(4, "Бытовая техника", "Холодильники, стиральные машины");
+
+        // Товары
+        products.Rows.Add(1, "iPhone 15 Pro", 129990m, 1);
+        products.Rows.Add(2, "Samsung Galaxy S24", 89990m, 1);
+        products.Rows.Add(3, "Xiaomi 14", 59990m, 1);
+        products.Rows.Add(4, "iPad Air", 74990m, 1);
+
+        products.Rows.Add(5, "Джинсы Levi's", 5990m, 2);
+        products.Rows.Add(6, "Куртка Adidas", 12990m, 2);
+        products.Rows.Add(7, "Футболка Nike", 2490m, 2);
+
+        products.Rows.Add(8, "Война и мир", 1290m, 3);
+        products.Rows.Add(9, "C# in Depth", 2890m, 3);
+
+        products.Rows.Add(10, "Холодильник LG", 45990m, 4);
+        products.Rows.Add(11, "Стиральная машина Bosch", 37990m, 4);
+    }
+
+    // Создание отношения с обработкой исключений
+    static void CreateRelationship(DataSet ds)
+    {
+        try
+        {
+            DataTable categories = ds.Tables["Категории"];
+            DataTable products = ds.Tables["Товары"];
+
+            DataRelation relation = new DataRelation(
+                "FK_Categories_Products",
+                categories.Columns["CategoryID"],
+                products.Columns["CategoryID"],
+                true  // createConstraints=true
+            );
+
+            ds.Relations.Add(relation);
+            Console.WriteLine("✓ Отношение успешно создано");
+        }
+        catch (ArgumentException ex)
+        {
+            Console.WriteLine($"ОШИБКА создания отношения: {ex.Message}");
+            Console.WriteLine("Возможные причины:");
+            Console.WriteLine("- Несоответствие типов данных колонок");
+            Console.WriteLine("- Отсутствуют первичные/внешние ключи");
+            Console.WriteLine("- Уже существует отношение с таким именем");
+        }
+    }
+
+    // Информация о созданном отношении
+    static void PrintRelationInfo(DataSet ds)
+    {
+        Console.WriteLine("ИНФОРМАЦИЯ О ОТНОШЕНИИ:");
+        Console.WriteLine("═══════════════════════════════════════════════════════");
+
+        if (ds.Relations.Count == 0)
+        {
+            Console.WriteLine("Отношения отсутствуют");
+            return;
+        }
+
+        DataRelation relation = ds.Relations["FK_Categories_Products"];
+
+        Console.WriteLine($"Имя отношения: {relation.RelationName}");
+        Console.WriteLine($"Родительская таблица: {relation.ParentTable.TableName}");
+        Console.WriteLine($"Дочерняя таблица: {relation.ChildTable.TableName}");
+        Console.WriteLine();
+        Console.WriteLine("Колонки связи:");
+        Console.WriteLine("─────────────────");
+        Console.WriteLine($"Родитель: {relation.ParentColumns[0].ColumnName} ({relation.ParentColumns[0].DataType.Name})");
+        Console.WriteLine($"Дочерний: {relation.ChildColumns[0].ColumnName} ({relation.ChildColumns[0].DataType.Name})");
+        Console.WriteLine();
+        Console.WriteLine($"Ограничения: {(relation.ChildKeyConstraint != null ? "Включены" : "Отсутствуют")}");
+    }
+
+    // Иерархическая структура (категория → товары)
+    static void PrintHierarchicalStructure(DataSet ds)
+    {
+        DataTable categories = ds.Tables["Категории"];
+
+        Console.WriteLine("ИЕРАРХИЧЕСКАЯ СТРУКТУРА (КАТЕГОРИЯ → ТОВАРЫ):");
+        Console.WriteLine("═══════════════════════════════════════════════════════");
+
+        foreach (DataRow categoryRow in categories.Rows)
+        {
+            int categoryID = (int)categoryRow["CategoryID"];
+            string categoryName = (string)categoryRow["CategoryName"];
+            string description = (string)categoryRow["Description"];
+
+            Console.WriteLine($"\n КАТЕГОРИЯ: {categoryName} (ID: {categoryID})");
+            Console.WriteLine($"   Описание: {description}");
+            Console.WriteLine("   │");
+
+            // Получаем товары категории через отношение (GetChildRows)
+            DataRow[] productRows = categoryRow.GetChildRows("FK_Categories_Products");
+
+            if (productRows.Length == 0)
+            {
+                Console.WriteLine("   └── Нет товаров");
+                continue;
+            }
+
+            Console.WriteLine("   ├── Товары:");
+            foreach (DataRow productRow in productRows)
+            {
+                string productName = (string)productRow["ProductName"];
+                decimal price = (decimal)productRow["Price"];
+                Console.WriteLine($"   │   • {productName} - {price:N0} ₽");
+            }
+        }
+
+        Console.WriteLine("\n═══════════════════════════════════════════════════════");
+        Console.WriteLine($"Всего категорий: {categories.Rows.Count}");
+        Console.WriteLine($"Всего товаров: {ds.Tables["Товары"].Rows.Count}");
+    }
+}
