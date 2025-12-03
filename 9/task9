@@ -1,0 +1,217 @@
+using System;
+using System.Data;
+
+class Program
+{
+    static void Main()
+    {
+        try
+        {
+            Console.WriteLine("=== ЗАДАНИЕ 9: DeleteRule - ПОВЕДЕНИЕ ПРИ УДАЛЕНИИ ===\n");
+            
+            TestDeleteRuleCascade();
+            Console.WriteLine("\n" + new string('═', 60) + "\n");
+            
+            TestDeleteRuleSetNull();
+            Console.WriteLine("\n" + new string('═', 60) + "\n");
+            
+            TestDeleteRuleNone();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"ОШИБКА: {ex.Message}");
+        }
+    }
+    
+    static void TestDeleteRuleCascade()
+    {
+        Console.WriteLine("1. DeleteRule.Cascade (КАСКАДНОЕ УДАЛЕНИЕ)");
+        Console.WriteLine("═══════════════════════════════════════════════");
+        
+        DataSet ds = CreateTestDataSet();
+        CreateCascadeRelationship(ds);
+        
+        PrintTablesState(ds, "ДО удаления отдела IT");
+        
+        try
+        {
+            DataTable departments = ds.Tables["Отделы"];
+            DataRow deptToDelete = departments.Rows.Find(2);
+            deptToDelete.Delete();
+            ds.AcceptChanges();
+            
+            PrintTablesState(ds, "ПОСЛЕ каскадного удаления");
+            Console.WriteLine("✓ Отдел и все сотрудники удалены");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"ОШИБКА: {ex.Message}");
+        }
+    }
+    
+    static void TestDeleteRuleSetNull()
+    {
+        Console.WriteLine("2. DeleteRule.SetNull (УСТАНОВКА NULL)");
+        Console.WriteLine("═══════════════════════════════════════════════");
+        
+        DataSet ds = CreateTestDataSet();
+        CreateSetNullRelationship(ds);
+        
+        PrintTablesState(ds, "ДО удаления отдела HR");
+        
+        try
+        {
+            DataTable departments = ds.Tables["Отделы"];
+            DataRow deptToDelete = departments.Rows.Find(1);
+            deptToDelete.Delete();
+            ds.AcceptChanges();
+            
+            PrintTablesState(ds, "ПОСЛЕ установки NULL");
+            Console.WriteLine("✓ Отдел удалён, у сотрудников DepartmentID = NULL");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"ОШИБКА: {ex.Message}");
+        }
+    }
+    
+    static void TestDeleteRuleNone()
+    {
+        Console.WriteLine("3. DeleteRule.None (ЗАПРЕТ УДАЛЕНИЯ)");
+        Console.WriteLine("═══════════════════════════════════════════════");
+        
+        DataSet ds = CreateTestDataSet();
+        CreateNoneRelationship(ds);
+        
+        PrintTablesState(ds, "ПОПЫТКА удалить отдел с сотрудниками");
+        
+        try
+        {
+            DataTable departments = ds.Tables["Отделы"];
+            DataRow deptToDelete = departments.Rows.Find(3);
+            deptToDelete.Delete();
+            
+            Console.WriteLine("ОШИБКА ожидается...");
+            ds.AcceptChanges();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"✓ ОШИБКА (ожидаемо): {ex.Message}");
+            PrintTablesState(ds, "Отдел НЕ удалён");
+        }
+    }
+    
+    static DataSet CreateTestDataSet()
+    {
+        DataSet ds = new DataSet("CompanyTestDB");
+        
+        DataTable departments = new DataTable("Отделы");
+        departments.Columns.Add("DepartmentID", typeof(int));
+        departments.Columns.Add("DepartmentName", typeof(string));
+        departments.PrimaryKey = new DataColumn[] { departments.Columns["DepartmentID"] };
+        
+        DataTable employees = new DataTable("Сотрудники");
+        employees.Columns.Add("EmployeeID", typeof(int));
+        employees.Columns.Add("EmployeeName", typeof(string));
+        employees.Columns.Add("DepartmentID", typeof(int));
+        employees.Columns.Add("Salary", typeof(decimal));
+        employees.PrimaryKey = new DataColumn[] { employees.Columns["EmployeeID"] };
+        
+        ds.Tables.Add(departments);
+        ds.Tables.Add(employees);
+        
+        departments.Rows.Add(1, "HR");
+        departments.Rows.Add(2, "IT");
+        departments.Rows.Add(3, "Продажи");
+        
+        employees.Rows.Add(101, "Иван Петров", 1, 150000m);
+        employees.Rows.Add(102, "Мария Сидорова", 1, 120000m);
+        employees.Rows.Add(103, "Алексей Новиков", 2, 200000m);
+        employees.Rows.Add(104, "Елена Козлова", 2, 180000m);
+        employees.Rows.Add(105, "Петр Сергеев", 3, 140000m);
+        
+        return ds;
+    }
+    
+    static void CreateCascadeRelationship(DataSet ds)
+    {
+        DataTable depts = ds.Tables["Отделы"];
+        DataTable emps = ds.Tables["Сотрудники"];
+        
+        ForeignKeyConstraint fk = new ForeignKeyConstraint(
+            "FK_Employees_Departments_Cascade",
+            depts.Columns["DepartmentID"],
+            emps.Columns["DepartmentID"]
+        );
+        fk.DeleteRule = Rule.Cascade;
+        emps.Constraints.Add(fk);
+        
+        DataRelation rel = new DataRelation("FK_Rel_Cascade", 
+            depts.Columns["DepartmentID"], emps.Columns["DepartmentID"]);
+        ds.Relations.Add(rel);
+    }
+    
+    static void CreateSetNullRelationship(DataSet ds)
+    {
+        DataTable depts = ds.Tables["Отделы"];
+        DataTable emps = ds.Tables["Сотрудники"];
+        
+        ForeignKeyConstraint fk = new ForeignKeyConstraint(
+            "FK_Employees_Departments_SetNull",
+            depts.Columns["DepartmentID"],
+            emps.Columns["DepartmentID"]
+        );
+        fk.DeleteRule = Rule.SetNull;
+        emps.Constraints.Add(fk);
+        
+        DataRelation rel = new DataRelation("FK_Rel_SetNull", 
+            depts.Columns["DepartmentID"], emps.Columns["DepartmentID"]);
+        ds.Relations.Add(rel);
+    }
+    
+    static void CreateNoneRelationship(DataSet ds)
+    {
+        DataTable depts = ds.Tables["Отделы"];
+        DataTable emps = ds.Tables["Сотрудники"];
+        
+        ForeignKeyConstraint fk = new ForeignKeyConstraint(
+            "FK_Employees_Departments_None",
+            depts.Columns["DepartmentID"],
+            emps.Columns["DepartmentID"]
+        );
+        fk.DeleteRule = Rule.None;
+        emps.Constraints.Add(fk);
+        
+        DataRelation rel = new DataRelation("FK_Rel_None", 
+            depts.Columns["DepartmentID"], emps.Columns["DepartmentID"]);
+        ds.Relations.Add(rel);
+    }
+    
+    static void PrintTablesState(DataSet ds, string title)
+    {
+        Console.WriteLine($"\n{title}:");
+        Console.WriteLine("─────────────────────────────────────────────");
+        
+        DataTable depts = ds.Tables["Отделы"];
+        Console.WriteLine($"\nОтделы ({depts.Rows.Count}):");
+        foreach (DataRow dept in depts.Rows)
+        {
+            if (dept.RowState == DataRowState.Deleted)
+                Console.WriteLine($"  [УДАЛЁН] {dept["DepartmentName", DataRowVersion.Original]}");
+            else
+                Console.WriteLine($"  {dept["DepartmentID"]}. {dept["DepartmentName"]}");
+        }
+        
+        DataTable emps = ds.Tables["Сотрудники"];
+        Console.WriteLine($"\nСотрудники ({emps.Rows.Count}):");
+        foreach (DataRow emp in emps.Rows)
+        {
+            string status = "";
+            if (emp.RowState == DataRowState.Deleted) status = "[УДАЛЁН] ";
+            else if (emp.RowState == DataRowState.Modified) status = "[ИЗМЕНЁН] ";
+            
+            Console.WriteLine($"  {status}{emp["EmployeeID"]}. {emp["EmployeeName"]} (Отдел: {emp["DepartmentID"] ?? "NULL"})");
+        }
+        Console.WriteLine();
+    }
+}
