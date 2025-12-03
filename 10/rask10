@@ -1,0 +1,222 @@
+using System;
+using System.Data;
+
+class Program
+{
+    static void Main()
+    {
+        try
+        {
+            Console.WriteLine("=== ЗАДАНИЕ 10: UpdateRule - ПОВЕДЕНИЕ ПРИ ИЗМЕНЕНИИ PK ===\n");
+            
+            TestUpdateRuleCascade();
+            Console.WriteLine("\n" + new string('═', 60) + "\n");
+            
+            TestUpdateRuleSetNull();
+            Console.WriteLine("\n" + new string('═', 60) + "\n");
+            
+            TestUpdateRuleNone();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"ОШИБКА: {ex.Message}");
+        }
+    }
+    
+    static void TestUpdateRuleCascade()
+    {
+        Console.WriteLine("1. UpdateRule.Cascade (КАСКАДНОЕ ОБНОВЛЕНИЕ)");
+        Console.WriteLine("═══════════════════════════════════════════════");
+        
+        DataSet ds = CreateTestDataSet();
+        CreateCascadeUpdateRelationship(ds);
+        
+        PrintTablesState(ds, "ДО изменения ID отдела HR (1 → 101)");
+        
+        try
+        {
+            DataTable departments = ds.Tables["Отделы"];
+            DataRow hrDept = departments.Rows.Find(1);
+            hrDept["DepartmentID"] = 101;
+            ds.AcceptChanges();
+            
+            PrintTablesState(ds, "ПОСЛЕ каскадного обновления");
+            Console.WriteLine("✓ ID отдела изменён с 1 на 101, у сотрудников тоже обновлён");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"ОШИБКА: {ex.Message}");
+        }
+    }
+    
+    static void TestUpdateRuleSetNull()
+    {
+        Console.WriteLine("2. UpdateRule.SetNull (УСТАНОВКА NULL)");
+        Console.WriteLine("═══════════════════════════════════════════════");
+        
+        DataSet ds = CreateTestDataSet();
+        CreateSetNullUpdateRelationship(ds);
+        
+        PrintTablesState(ds, "ДО изменения ID отдела IT (2 → 202)");
+        
+        try
+        {
+            DataTable departments = ds.Tables["Отделы"];
+            DataRow itDept = departments.Rows.Find(2);
+            itDept["DepartmentID"] = 202;
+            ds.AcceptChanges();
+            
+            PrintTablesState(ds, "ПОСЛЕ установки NULL");
+            Console.WriteLine("✓ ID отдела изменён на 202, у сотрудников DepartmentID = NULL");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"ОШИБКА: {ex.Message}");
+        }
+    }
+    
+    static void TestUpdateRuleNone()
+    {
+        Console.WriteLine("3. UpdateRule.None (ЗАПРЕТ ИЗМЕНЕНИЯ)");
+        Console.WriteLine("═══════════════════════════════════════════════");
+        
+        DataSet ds = CreateTestDataSet();
+        CreateNoneUpdateRelationship(ds);
+        
+        PrintTablesState(ds, "ПОПЫТКА изменить ID отдела Продажи (3 → 303)");
+        
+        try
+        {
+            DataTable departments = ds.Tables["Отделы"];
+            DataRow salesDept = departments.Rows.Find(3);
+            salesDept["DepartmentID"] = 303;
+            
+            Console.WriteLine("ОШИБКА ожидается...");
+            ds.AcceptChanges();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"✓ ОШИБКА (ожидаемо): {ex.Message}");
+            PrintTablesState(ds, "ID отдела НЕ изменён");
+        }
+    }
+    
+    static DataSet CreateTestDataSet()
+    {
+        DataSet ds = new DataSet("CompanyTestDB");
+        
+        DataTable departments = new DataTable("Отделы");
+        departments.Columns.Add("DepartmentID", typeof(int));
+        departments.Columns.Add("DepartmentName", typeof(string));
+        departments.PrimaryKey = new DataColumn[] { departments.Columns["DepartmentID"] };
+        
+        DataTable employees = new DataTable("Сотрудники");
+        employees.Columns.Add("EmployeeID", typeof(int));
+        employees.Columns.Add("EmployeeName", typeof(string));
+        employees.Columns.Add("DepartmentID", typeof(int));
+        employees.Columns.Add("Salary", typeof(decimal));
+        employees.PrimaryKey = new DataColumn[] { employees.Columns["EmployeeID"] };
+        
+        ds.Tables.Add(departments);
+        ds.Tables.Add(employees);
+        
+        departments.Rows.Add(1, "HR");
+        departments.Rows.Add(2, "IT");
+        departments.Rows.Add(3, "Продажи");
+        
+        employees.Rows.Add(101, "Иван Петров", 1, 150000m);
+        employees.Rows.Add(102, "Мария Сидорова", 1, 120000m);
+        employees.Rows.Add(103, "Алексей Новиков", 2, 200000m);
+        employees.Rows.Add(104, "Елена Козлова", 2, 180000m);
+        employees.Rows.Add(105, "Петр Сергеев", 3, 140000m);
+        
+        return ds;
+    }
+    
+    static void CreateCascadeUpdateRelationship(DataSet ds)
+    {
+        DataTable depts = ds.Tables["Отделы"];
+        DataTable emps = ds.Tables["Сотрудники"];
+        
+        ForeignKeyConstraint fk = new ForeignKeyConstraint(
+            "FK_Employees_Departments_CascadeUpdate",
+            depts.Columns["DepartmentID"],
+            emps.Columns["DepartmentID"]
+        );
+        fk.UpdateRule = Rule.Cascade;
+        emps.Constraints.Add(fk);
+        
+        DataRelation rel = new DataRelation("FK_Rel_CascadeUpdate", 
+            depts.Columns["DepartmentID"], emps.Columns["DepartmentID"]);
+        ds.Relations.Add(rel);
+    }
+    
+    static void CreateSetNullUpdateRelationship(DataSet ds)
+    {
+        DataTable depts = ds.Tables["Отделы"];
+        DataTable emps = ds.Tables["Сотрудники"];
+        
+        ForeignKeyConstraint fk = new ForeignKeyConstraint(
+            "FK_Employees_Departments_SetNullUpdate",
+            depts.Columns["DepartmentID"],
+            emps.Columns["DepartmentID"]
+        );
+        fk.UpdateRule = Rule.SetNull;
+        emps.Constraints.Add(fk);
+        
+        DataRelation rel = new DataRelation("FK_Rel_SetNullUpdate", 
+            depts.Columns["DepartmentID"], emps.Columns["DepartmentID"]);
+        ds.Relations.Add(rel);
+    }
+    
+    static void CreateNoneUpdateRelationship(DataSet ds)
+    {
+        DataTable depts = ds.Tables["Отделы"];
+        DataTable emps = ds.Tables["Сотрудники"];
+        
+        ForeignKeyConstraint fk = new ForeignKeyConstraint(
+            "FK_Employees_Departments_NoneUpdate",
+            depts.Columns["DepartmentID"],
+            emps.Columns["DepartmentID"]
+        );
+        fk.UpdateRule = Rule.None;
+        emps.Constraints.Add(fk);
+        
+        DataRelation rel = new DataRelation("FK_Rel_NoneUpdate", 
+            depts.Columns["DepartmentID"], emps.Columns["DepartmentID"]);
+        ds.Relations.Add(rel);
+    }
+    
+    static void PrintTablesState(DataSet ds, string title)
+    {
+        Console.WriteLine($"\n{title}:");
+        Console.WriteLine("─────────────────────────────────────────────");
+        
+        DataTable depts = ds.Tables["Отделы"];
+        Console.WriteLine($"\nОтделы ({depts.Rows.Count}):");
+        foreach (DataRow dept in depts.Rows)
+        {
+            if (dept.RowState == DataRowState.Deleted)
+                Console.WriteLine($"  [УДАЛЁН] {dept["DepartmentName", DataRowVersion.Original]} (ID: {dept["DepartmentID", DataRowVersion.Original]})");
+            else if (dept.RowState == DataRowState.Modified)
+                Console.WriteLine($"  [ИЗМЕНЁН] {dept["DepartmentName"]} (ID: {dept["DepartmentID"]})");
+            else
+                Console.WriteLine($"  {dept["DepartmentID"]}. {dept["DepartmentName"]}");
+        }
+        
+        DataTable emps = ds.Tables["Сотрудники"];
+        Console.WriteLine($"\nСотрудники ({emps.Rows.Count}):");
+        foreach (DataRow emp in emps.Rows)
+        {
+            string status = "";
+            if (emp.RowState == DataRowState.Deleted) status = "[УДАЛЁН] ";
+            else if (emp.RowState == DataRowState.Modified) status = "[ИЗМЕНЁН] ";
+            
+            object deptID = emp["DepartmentID"];
+            string deptDisplay = deptID != DBNull.Value ? deptID.ToString() : "NULL";
+            
+            Console.WriteLine($"  {status}{emp["EmployeeID"]}. {emp["EmployeeName"]} (Отдел: {deptDisplay})");
+        }
+        Console.WriteLine();
+    }
+}
