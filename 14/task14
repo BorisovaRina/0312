@@ -1,0 +1,268 @@
+using System;
+using System.Data;
+using System.Collections.Generic;
+
+class Program
+{
+    static void Main()
+    {
+        try
+        {
+            DataSet ds = CreateDataSet();
+            FillTestData(ds);
+            CreateRelationships(ds);
+            
+            Console.WriteLine("=== ЗАДАНИЕ 14: RowState.Modified - ИЗМЕНЁННЫЕ РЕГИСТРАЦИИ ===\n");
+            
+            Console.WriteLine("1. ИСХОДНЫЕ ДАННЫЕ:");
+            PrintInitialState(ds);
+            Console.WriteLine();
+            
+            Console.WriteLine("2. МОДИФИЦИРУЕМ РЕГИСТРАЦИИ:");
+            ModifyRegistrations(ds);
+            Console.WriteLine();
+            
+            Console.WriteLine("3. ОТЧЁТ ОБ ИЗМЕНЁННЫХ РЕГИСТРАЦИЯХ:");
+            PrintModifiedRegistrationsReport(ds);
+            Console.WriteLine();
+            
+            Console.WriteLine("4. ДЕЛЬТА ИЗМЕНЕНИЙ:");
+            PrintChangeDeltaReport(ds);
+            Console.WriteLine();
+            
+            Console.WriteLine("5. СТАТИСТИКА ИЗМЕНЕНИЙ ОЦЕНОК:");
+            PrintGradeChangeStatistics(ds);
+            Console.WriteLine();
+            
+            Console.WriteLine("6. ВАЛИДАЦИЯ ПЕРЕД СОХРАНЕНИЕМ:");
+            ValidateModifiedGrades(ds);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"ОШИБКА: {ex.Message}");
+        }
+    }
+    
+    static DataSet CreateDataSet()
+    {
+        DataSet ds = new DataSet("UniversityDB");
+        
+        DataTable students = new DataTable("Студенты");
+        students.Columns.Add("StudentID", typeof(int));
+        students.Columns.Add("StudentName", typeof(string));
+        students.Columns.Add("Email", typeof(string));
+        students.PrimaryKey = new DataColumn[] { students.Columns["StudentID"] };
+        
+        DataTable courses = new DataTable("Курсы");
+        courses.Columns.Add("CourseID", typeof(string));
+        courses.Columns.Add("CourseName", typeof(string));
+        courses.Columns.Add("Instructor", typeof(string));
+        courses.PrimaryKey = new DataColumn[] { courses.Columns["CourseID"] };
+        
+        DataTable registration = new DataTable("Регистрация");
+        registration.Columns.Add("RegistrationID", typeof(int));
+        registration.Columns.Add("StudentID", typeof(int));
+        registration.Columns.Add("CourseID", typeof(string));
+        registration.Columns.Add("EnrollmentDate", typeof(DateTime));
+        registration.Columns.Add("Grade", typeof(double));
+        registration.PrimaryKey = new DataColumn[] { registration.Columns["RegistrationID"] };
+        
+        ds.Tables.Add(students);
+        ds.Tables.Add(courses);
+        ds.Tables.Add(registration);
+        
+        return ds;
+    }
+    
+    static void FillTestData(DataSet ds)
+    {
+        DataTable students = ds.Tables["Студенты"];
+        DataTable courses = ds.Tables["Курсы"];
+        DataTable registration = ds.Tables["Регистрация"];
+        
+        students.Rows.Add(101, "Иван Петров", "ivan@example.com");
+        students.Rows.Add(102, "Мария Сидорова", "maria@example.com");
+        students.Rows.Add(103, "Петр Иванов", "petr@example.com");
+        students.Rows.Add(104, "Анна Смирнова", "anna@example.com");
+        
+        courses.Rows.Add("C001", "C# Programming", "Дмитрий Волков");
+        courses.Rows.Add("C002", "Database Design", "Светлана Морозова");
+        courses.Rows.Add("C003", "Web Development", "Алексей Новиков");
+        courses.Rows.Add("C004", "OOP Principles", "Петр Сергеев");
+        
+        registration.Rows.Add(1, 101, "C001", new DateTime(2024, 1, 15), 4.5);
+        registration.Rows.Add(2, 101, "C002", new DateTime(2024, 1, 20), 3.8);
+        registration.Rows.Add(3, 102, "C001", new DateTime(2024, 1, 15), 4.2);
+        registration.Rows.Add(4, 102, "C003", new DateTime(2024, 2, 5), 4.7);
+        registration.Rows.Add(5, 103, "C002", new DateTime(2024, 1, 20), 3.5);
+        registration.Rows.Add(6, 103, "C004", new DateTime(2024, 2, 10), 4.0);
+        registration.Rows.Add(7, 104, "C001", new DateTime(2024, 1, 15), 4.8);
+    }
+    
+    static void CreateRelationships(DataSet ds)
+    {
+        DataTable students = ds.Tables["Студенты"];
+        DataTable courses = ds.Tables["Курсы"];
+        DataTable registration = ds.Tables["Регистрация"];
+        
+        DataRelation rel1 = new DataRelation(
+            "FK_Students_Registration",
+            students.Columns["StudentID"],
+            registration.Columns["StudentID"],
+            true
+        );
+        ds.Relations.Add(rel1);
+        
+        DataRelation rel2 = new DataRelation(
+            "FK_Courses_Registration",
+            courses.Columns["CourseID"],
+            registration.Columns["CourseID"],
+            true
+        );
+        ds.Relations.Add(rel2);
+    }
+    
+    static void ModifyRegistrations(DataSet ds)
+    {
+        DataTable registration = ds.Tables["Регистрация"];
+        
+        // Модифицируем оценки (RowState.Modified)
+        DataRow reg1 = registration.Rows.Find(1);
+        reg1["Grade"] = 4.8;  // 4.5 → 4.8 (повышение)
+        
+        DataRow reg2 = registration.Rows.Find(2);
+        reg2["Grade"] = 3.5;  // 3.8 → 3.5 (понижение)
+        
+        DataRow reg3 = registration.Rows.Find(3);
+        reg3["Grade"] = 6.0;  // 4.2 → 6.0 (невалидно > 5)
+        
+        DataRow reg5 = registration.Rows.Find(5);
+        reg5["Grade"] = 4.2;  // 3.5 → 4.2 (повышение)
+        
+        DataRow reg7 = registration.Rows.Find(7);
+        reg7["Grade"] = 4.7;  // 4.8 → 4.7 (понижение)
+        
+        Console.WriteLine("✓ Изменены оценки в 5 регистрациях");
+        Console.WriteLine("Изменения НЕ сохранены (только в памяти)");
+    }
+    
+    static void PrintModifiedRegistrationsReport(DataSet ds)
+    {
+        DataTable registration = ds.Tables["Регистрация"];
+        DataRow[] modifiedRows = registration.Select("", "", DataViewRowState.ModifiedCurrent);
+        
+        Console.WriteLine("ИЗМЕНЁННЫЕ РЕГИСТРАЦИИ (RowState.Modified):");
+        Console.WriteLine("═══════════════════════════════════════════════════════════════════════");
+        Console.WriteLine("ID  | Студент             | Курс             | Старая | Новая | Изм.");
+        Console.WriteLine("───────────────────────────────────────────────────────────────────────");
+        
+        foreach (DataRow modRow in modifiedRows)
+        {
+            int regID = (int)modRow["RegistrationID"];
+            
+            // Original и Current версии оценки
+            double oldGrade = (double)modRow["Grade", DataRowVersion.Original];
+            double newGrade = (double)modRow["Grade", DataRowVersion.Current];
+            double delta = newGrade - oldGrade;
+            
+            // Информация о студенте
+            DataRow[] studentRows = modRow.GetParentRows("FK_Students_Registration");
+            string studentName = studentRows.Length > 0 ? (string)studentRows[0]["StudentName"] : "НЕ НАЙДЕН";
+            
+            // Информация о курсе
+            DataRow[] courseRows = modRow.GetParentRows("FK_Courses_Registration");
+            string courseName = courseRows.Length > 0 ? (string)courseRows[0]["CourseName"] : "НЕ НАЙДЕН";
+            
+            string deltaSign = delta > 0 ? "+" : (delta < 0 ? "−" : " ");
+            Console.WriteLine($"{regID,3} | {studentName,-20} | {courseName,-17} | {oldGrade,5:F1} | {newGrade,5:F1} | {deltaSign}{Math.Abs(delta):3:F1}");
+        }
+    }
+    
+    static void PrintChangeDeltaReport(DataSet ds)
+    {
+        DataTable registration = ds.Tables["Регистрация"];
+        DataRow[] modifiedRows = registration.Select("", "", DataViewRowState.ModifiedCurrent);
+        
+        Console.WriteLine("ДЕЛЬТА ИЗМЕНЕНИЙ:");
+        Console.WriteLine("═══════════════════════════════════════");
+        
+        foreach (DataRow modRow in modifiedRows)
+        {
+            double oldGrade = (double)modRow["Grade", DataRowVersion.Original];
+            double newGrade = (double)modRow["Grade", DataRowVersion.Current];
+            double delta = newGrade - oldGrade;
+            
+            string changeType = delta > 0 ? "ПОВЫШЕНИЕ" : 
+                               (delta < 0 ? "Понижение" : "БЕЗ ИЗМЕНЕНИЙ");
+            string direction = delta > 0 ? "↑" : (delta < 0 ? "↓" : "→");
+            
+            Console.WriteLine($"Регистрация {modRow["RegistrationID"]}: " +
+                $"{oldGrade:F1} {direction} {newGrade:F1} ({changeType}, Δ={delta:+0.0;-0.0})");
+        }
+    }
+    
+    static void PrintGradeChangeStatistics(DataSet ds)
+    {
+        DataTable registration = ds.Tables["Регистрация"];
+        DataRow[] modifiedRows = registration.Select("", "", DataViewRowState.ModifiedCurrent);
+        
+        int increased = 0, decreased = 0, unchanged = 0;
+        
+        foreach (DataRow modRow in modifiedRows)
+        {
+            double oldGrade = (double)modRow["Grade", DataRowVersion.Original];
+            double newGrade = (double)modRow["Grade", DataRowVersion.Current];
+            double delta = newGrade - oldGrade;
+            
+            if (delta > 0) increased++;
+            else if (delta < 0) decreased++;
+            else unchanged++;
+        }
+        
+        Console.WriteLine("СТАТИСТИКА ИЗМЕНЕНИЙ ОЦЕНОК:");
+        Console.WriteLine("═══════════════════════════════════════");
+        Console.WriteLine($"Повышенных:     {increased,3}");
+        Console.WriteLine($"Пониженных:     {decreased,3}");
+        Console.WriteLine($"Без изменений:  {unchanged,3}");
+        Console.WriteLine($"Всего изменено: {modifiedRows.Length,3}");
+    }
+    
+    static void ValidateModifiedGrades(DataSet ds)
+    {
+        DataTable registration = ds.Tables["Регистрация"];
+        DataRow[] modifiedRows = registration.Select("", "", DataViewRowState.ModifiedCurrent);
+        
+        int valid = 0, invalidHigh = 0, invalidLow = 0;
+        
+        Console.WriteLine("\nВАЛИДАЦИЯ ИЗМЕНЁННЫХ ОЦЕНОК (2.0-5.0):");
+        Console.WriteLine("═══════════════════════════════════════");
+        
+        foreach (DataRow modRow in modifiedRows)
+        {
+            double newGrade = (double)modRow["Grade", DataRowVersion.Current];
+            
+            if (newGrade >= 2.0 && newGrade <= 5.0)
+                valid++;
+            else if (newGrade > 5.0)
+                invalidHigh++;
+            else
+                invalidLow++;
+        }
+        
+        Console.WriteLine($"Валидных (2.0-5.0):  {valid}");
+        Console.WriteLine($"Слишком высокие:     {invalidHigh}");
+        Console.WriteLine($"Слишком низкие:      {invalidLow}");
+        Console.WriteLine($"Всего проверено:     {modifiedRows.Length}");
+        
+        if (invalidHigh > 0 || invalidLow > 0)
+            Console.WriteLine("\n⚠️  ПРЕДУПРЕЖДЕНИЕ: есть невалидные оценки!");
+    }
+    
+    static void PrintInitialState(DataSet ds)
+    {
+        DataTable registration = ds.Tables["Регистрация"];
+        Console.WriteLine($"Исходных регистраций: {registration.Rows.Count}");
+        Console.WriteLine($"Студентов: {ds.Tables["Студенты"].Rows.Count}");
+        Console.WriteLine($"Курсов: {ds.Tables["Курсы"].Rows.Count}");
+    }
+}
