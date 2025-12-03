@@ -1,0 +1,268 @@
+using System;
+using System.Data;
+
+class Program
+{
+    static void Main()
+    {
+        DataSet ds = CreateDataSet();
+        FillTestData(ds);
+        CreateRelationships(ds);
+        
+        Console.WriteLine("=== ЗАДАНИЕ 6: ОТНОШЕНИЕ МНОГИЕ-КО-МНОГИМ ===\n");
+        
+        Console.WriteLine("1. КУРСЫ СТУДЕНТА (ID=101):");
+        Console.WriteLine("═══════════════════════════════════════");
+        GetStudentCoursesAndGrades(ds, 101);
+        Console.WriteLine();
+        
+        Console.WriteLine("2. СТУДЕНТЫ НА КУРСЕ (C001):");
+        Console.WriteLine("═══════════════════════════════════════");
+        GetCourseStudentsAndGrades(ds, "C001");
+        Console.WriteLine();
+        
+        Console.WriteLine("3. СТАТИСТИКА ПО КУРСАМ:");
+        Console.WriteLine("═══════════════════════════════════════");
+        CalculateCourseStatistics(ds);
+        Console.WriteLine();
+        
+        Console.WriteLine("4. СТАТИСТИКА ПО СТУДЕНТАМ:");
+        Console.WriteLine("═══════════════════════════════════════");
+        CalculateStudentStatistics(ds);
+        Console.WriteLine();
+        
+        Console.WriteLine("5. ПОЛНАЯ МАТРИЦА РЕГИСТРАЦИЙ:");
+        Console.WriteLine("═══════════════════════════════════════");
+        PrintAllRegistrations(ds);
+    }
+    
+    static DataSet CreateDataSet()
+    {
+        DataSet ds = new DataSet("UniversityDB");
+        
+        DataTable students = new DataTable("Студенты");
+        students.Columns.Add("StudentID", typeof(int));
+        students.Columns.Add("StudentName", typeof(string));
+        students.Columns.Add("Email", typeof(string));
+        students.PrimaryKey = new DataColumn[] { students.Columns["StudentID"] };
+        
+        DataTable courses = new DataTable("Курсы");
+        courses.Columns.Add("CourseID", typeof(string));
+        courses.Columns.Add("CourseName", typeof(string));
+        courses.Columns.Add("Instructor", typeof(string));
+        courses.PrimaryKey = new DataColumn[] { courses.Columns["CourseID"] };
+        
+        DataTable registration = new DataTable("Регистрация");
+        registration.Columns.Add("RegistrationID", typeof(int));
+        registration.Columns.Add("StudentID", typeof(int));
+        registration.Columns.Add("CourseID", typeof(string));
+        registration.Columns.Add("EnrollmentDate", typeof(DateTime));
+        registration.Columns.Add("Grade", typeof(double));
+        registration.PrimaryKey = new DataColumn[] { registration.Columns["RegistrationID"] };
+        
+        ds.Tables.Add(students);
+        ds.Tables.Add(courses);
+        ds.Tables.Add(registration);
+        
+        return ds;
+    }
+    
+    static void FillTestData(DataSet ds)
+    {
+        DataTable students = ds.Tables["Студенты"];
+        DataTable courses = ds.Tables["Курсы"];
+        DataTable registration = ds.Tables["Регистрация"];
+        
+        students.Rows.Add(101, "Иван Петров", "ivan@example.com");
+        students.Rows.Add(102, "Мария Сидорова", "maria@example.com");
+        students.Rows.Add(103, "Петр Иванов", "petr@example.com");
+        students.Rows.Add(104, "Анна Смирнова", "anna@example.com");
+        
+        courses.Rows.Add("C001", "C# Programming", "Дмитрий Волков");
+        courses.Rows.Add("C002", "Database Design", "Светлана Морозова");
+        courses.Rows.Add("C003", "Web Development", "Алексей Новиков");
+        courses.Rows.Add("C004", "OOP Principles", "Петр Сергеев");
+        
+        registration.Rows.Add(1, 101, "C001", new DateTime(2024, 1, 15), 4.5);
+        registration.Rows.Add(2, 101, "C002", new DateTime(2024, 1, 20), 3.8);
+        registration.Rows.Add(3, 101, "C004", new DateTime(2024, 2, 10), 4.9);
+        registration.Rows.Add(4, 102, "C001", new DateTime(2024, 1, 15), 4.8);
+        registration.Rows.Add(5, 102, "C003", new DateTime(2024, 2, 5), 4.2);
+        registration.Rows.Add(6, 103, "C002", new DateTime(2024, 1, 20), 3.5);
+        registration.Rows.Add(7, 103, "C003", new DateTime(2024, 2, 5), 4.0);
+        registration.Rows.Add(8, 103, "C004", new DateTime(2024, 2, 10), 4.7);
+        registration.Rows.Add(9, 104, "C001", new DateTime(2024, 1, 15), 4.6);
+        registration.Rows.Add(10, 104, "C002", new DateTime(2024, 1, 20), 4.3);
+        registration.Rows.Add(11, 104, "C003", new DateTime(2024, 2, 5), 4.1);
+    }
+    
+    static void CreateRelationships(DataSet ds)
+    {
+        DataTable students = ds.Tables["Студенты"];
+        DataTable courses = ds.Tables["Курсы"];
+        DataTable registration = ds.Tables["Регистрация"];
+        
+        DataRelation rel1 = new DataRelation(
+            "FK_Students_Registration",
+            students.Columns["StudentID"],
+            registration.Columns["StudentID"],
+            true
+        );
+        ds.Relations.Add(rel1);
+        
+        DataRelation rel2 = new DataRelation(
+            "FK_Courses_Registration",
+            courses.Columns["CourseID"],
+            registration.Columns["CourseID"],
+            true
+        );
+        ds.Relations.Add(rel2);
+    }
+    
+    static void GetStudentCoursesAndGrades(DataSet ds, int studentID)
+    {
+        DataTable students = ds.Tables["Студенты"];
+        DataRow studentRow = students.Rows.Find(studentID);
+        
+        if (studentRow == null)
+        {
+            Console.WriteLine($"Студент {studentID} не найден");
+            return;
+        }
+        
+        Console.WriteLine($"Студент: {studentRow["StudentName"]} ({studentRow["Email"]})");
+        Console.WriteLine("Курсы и оценки:");
+        Console.WriteLine("─────────────────────────────────────────────");
+        
+        DataRow[] registrations = studentRow.GetChildRows("FK_Students_Registration");
+        
+        if (registrations.Length == 0)
+        {
+            Console.WriteLine("Курсов нет");
+            return;
+        }
+        
+        Console.WriteLine("Курс                | Преподаватель    | Оценка | Дата");
+        Console.WriteLine("────────────────────────────────────────────────────");
+        
+        foreach (DataRow reg in registrations)
+        {
+            DataRow[] courseRows = reg.GetParentRows("FK_Courses_Registration");
+            if (courseRows.Length > 0)
+            {
+                DataRow course = courseRows[0];
+                Console.WriteLine($"{((string)course["CourseName"]):-20} | {((string)course["Instructor"]):-16} | {((double)reg["Grade"]):5:F1} | {((DateTime)reg["EnrollmentDate"]):dd.MM.yy}");
+            }
+        }
+    }
+    
+    static void GetCourseStudentsAndGrades(DataSet ds, string courseID)
+    {
+        DataTable courses = ds.Tables["Курсы"];
+        DataRow courseRow = courses.Rows.Find(courseID);
+        
+        if (courseRow == null)
+        {
+            Console.WriteLine($"Курс {courseID} не найден");
+            return;
+        }
+        
+        Console.WriteLine($"Курс: {courseRow["CourseName"]} (Преподаватель: {courseRow["Instructor"]})");
+        Console.WriteLine("Студенты:");
+        Console.WriteLine("─────────────────────────────────────────────");
+        
+        DataRow[] registrations = courseRow.GetChildRows("FK_Courses_Registration");
+        
+        if (registrations.Length == 0)
+        {
+            Console.WriteLine("Студентов нет");
+            return;
+        }
+        
+        Console.WriteLine("Студент             | Оценка | Дата");
+        Console.WriteLine("──────────────────────────────────────");
+        
+        foreach (DataRow reg in registrations)
+        {
+            DataRow[] studentRows = reg.GetParentRows("FK_Students_Registration");
+            if (studentRows.Length > 0)
+            {
+                DataRow student = studentRows[0];
+                Console.WriteLine($"{((string)student["StudentName"]):-20} | {((double)reg["Grade"]):5:F1} | {((DateTime)reg["EnrollmentDate"]):dd.MM.yy}");
+            }
+        }
+    }
+    
+    static void CalculateCourseStatistics(DataSet ds)
+    {
+        DataTable courses = ds.Tables["Курсы"];
+        
+        Console.WriteLine("Курс                | Студентов | Ср.оценка");
+        Console.WriteLine("──────────────────────────────────────");
+        
+        foreach (DataRow course in courses.Rows)
+        {
+            DataRow[] registrations = course.GetChildRows("FK_Courses_Registration");
+            string courseName = (string)course["CourseName"];
+            
+            if (registrations.Length == 0)
+            {
+                Console.WriteLine($"{courseName,-20} | {0,9} | Нет оценок");
+                continue;
+            }
+            
+            double totalGrade = 0;
+            foreach (DataRow reg in registrations)
+                totalGrade += (double)reg["Grade"];
+            
+            double avgGrade = totalGrade / registrations.Length;
+            Console.WriteLine($"{courseName,-20} | {registrations.Length,9} | {avgGrade,9:F2}");
+        }
+    }
+    
+    static void CalculateStudentStatistics(DataSet ds)
+    {
+        DataTable students = ds.Tables["Студенты"];
+        
+        Console.WriteLine("Студент             | Курсов  | Ср.оценка");
+        Console.WriteLine("──────────────────────────────────────");
+        
+        foreach (DataRow student in students.Rows)
+        {
+            DataRow[] registrations = student.GetChildRows("FK_Students_Registration");
+            string studentName = (string)student["StudentName"];
+            
+            if (registrations.Length == 0)
+            {
+                Console.WriteLine($"{studentName,-20} | {0,7} | Нет оценок");
+                continue;
+            }
+            
+            double totalGrade = 0;
+            foreach (DataRow reg in registrations)
+                totalGrade += (double)reg["Grade"];
+            
+            double avgGrade = totalGrade / registrations.Length;
+            Console.WriteLine($"{studentName,-20} | {registrations.Length,7} | {avgGrade,9:F2}");
+        }
+    }
+    
+    static void PrintAllRegistrations(DataSet ds)
+    {
+        DataTable registration = ds.Tables["Регистрация"];
+        
+        Console.WriteLine("ID | Студент             | Курс             | Дата      | Оценка");
+        Console.WriteLine("─────────────────────────────────────────────────────────────");
+        
+        foreach (DataRow reg in registration.Rows)
+        {
+            DataRow[] studentRows = reg.GetParentRows("FK_Students_Registration");
+            DataRow[] courseRows = reg.GetParentRows("FK_Courses_Registration");
+            
+            string studentName = studentRows.Length > 0 ? (string)studentRows[0]["StudentName"] : "Неизвестен";
+            string courseName = courseRows.Length > 0 ? (string)courseRows[0]["CourseName"] : "Неизвестен";
+            
+            Console.WriteLine($"{((int)reg["RegistrationID"]),3} | {studentName,-20} | {courseName,-17} | {((DateTime)reg["EnrollmentDate"]):dd.MM.yy} | {((double)reg["Grade"]):5:F1}");
+        }
+    }
+}
