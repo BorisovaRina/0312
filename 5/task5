@@ -1,0 +1,322 @@
+using System;
+using System.Data;
+using System.Collections.Generic;
+using System.Linq;
+
+class Program
+{
+    static void Main()
+    {
+        try
+        {
+            DataSet ds = CreateDataSet();
+            FillTestData(ds);
+            CreateSelfRelationship(ds);
+
+            Console.WriteLine("=== ЗАДАНИЕ 5: ФИЛЬТРАЦИЯ В ОТНОШЕНИИ \"САМ К СЕБЕ\" ===\n");
+
+            Console.WriteLine("1. ПОДЧИНЁННЫЕ МЕНЕДЖЕРА (ID=3):");
+            Console.WriteLine("═══════════════════════════════════════");
+            FindDirectSubordinates(ds, 3);
+            Console.WriteLine();
+
+            Console.WriteLine("2. ЦЕПОЧКА РУКОВОДИТЕЛЬСТВА (Сотр. ID=8):");
+            Console.WriteLine("═══════════════════════════════════════");
+            GetManagementChain(ds, 8);
+            Console.WriteLine();
+
+            Console.WriteLine("3. СОТРУДНИКИ УРОВНЯ 2:");
+            Console.WriteLine("═══════════════════════════════════════");
+            FindEmployeesByLevel(ds, 2);
+            Console.WriteLine();
+
+            Console.WriteLine("4. СТАТИСТИКА ПО ИЕРАРХИИ:");
+            Console.WriteLine("═══════════════════════════════════════");
+            PrintHierarchyStatistics(ds);
+            Console.WriteLine();
+
+            Console.WriteLine("5. КОЛЛЕГИ (подчинённые менеджера ID=5):");
+            Console.WriteLine("═══════════════════════════════════════");
+            FindColleagues(ds, 5);
+            Console.WriteLine();
+
+            Console.WriteLine("6. ВЫШЕСТОЯЩИЕ СОТРУДНИКИ (для ID=7):");
+            Console.WriteLine("═══════════════════════════════════════");
+            GetSupervisorsAboveEmployee(ds, 7);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"ОШИБКА: {ex.Message}");
+        }
+    }
+
+    static DataSet CreateDataSet()
+    {
+        DataSet ds = new DataSet("CompanyDB");
+
+        DataTable employees = new DataTable("Сотрудники");
+        employees.Columns.Add("EmployeeID", typeof(int));
+        employees.Columns.Add("EmployeeName", typeof(string));
+        employees.Columns.Add("Department", typeof(string));
+        employees.Columns.Add("Salary", typeof(decimal));
+        employees.Columns.Add("ManagerID", typeof(int));
+        employees.PrimaryKey = new DataColumn[] { employees.Columns["EmployeeID"] };
+
+        ds.Tables.Add(employees);
+        return ds;
+    }
+
+    static void FillTestData(DataSet ds)
+    {
+        DataTable employees = ds.Tables["Сотрудники"];
+
+        employees.Rows.Add(1, "Иван Петров", "Генеральный директор", 500000m, DBNull.Value);
+        employees.Rows.Add(2, "Мария Сидорова", "HR Директор", 250000m, 1);
+        employees.Rows.Add(3, "Алексей Новиков", "IT Директор", 300000m, 1);
+        employees.Rows.Add(4, "Елена Козлова", "HR Менеджер", 150000m, 2);
+        employees.Rows.Add(5, "Дмитрий Волков", "Lead Developer", 200000m, 3);
+        employees.Rows.Add(6, "Анна Смирнова", "HR Специалист", 120000m, 4);
+        employees.Rows.Add(7, "Петр Сергеев", "Senior Developer", 180000m, 5);
+        employees.Rows.Add(8, "Ольга Иванова", "Junior Developer", 90000m, 5);
+        employees.Rows.Add(9, "Сергей Морозов", "QA Engineer", 110000m, 5);
+    }
+
+    static void CreateSelfRelationship(DataSet ds)
+    {
+        DataTable employees = ds.Tables["Сотрудники"];
+
+        DataRelation selfRelation = new DataRelation(
+            "FK_Employees_Manager",
+            employees.Columns["EmployeeID"],
+            employees.Columns["ManagerID"],
+            false  // Без ограничений для NULL значений
+        );
+
+        ds.Relations.Add(selfRelation);
+    }
+
+    static void FindDirectSubordinates(DataSet ds, int managerID)
+    {
+        DataTable employees = ds.Tables["Сотрудники"];
+        DataRow manager = employees.Rows.Find(managerID);
+
+        if (manager == null)
+        {
+            Console.WriteLine("Менеджер не найден");
+            return;
+        }
+
+        DataRow[] subordinates = manager.GetChildRows("FK_Employees_Manager");
+
+        Console.WriteLine($"Менеджер: {manager["EmployeeName"]} ({manager["Department"]})");
+        Console.WriteLine("Прямые подчинённые:");
+        Console.WriteLine("─────────────────────────────");
+
+        if (subordinates.Length == 0)
+        {
+            Console.WriteLine("Подчинённых нет");
+            return;
+        }
+
+        Console.WriteLine("Имя                  | Отдел        | Зарплата");
+        Console.WriteLine("──────────────────────────────────────");
+
+        foreach (DataRow sub in subordinates)
+        {
+            Console.WriteLine($"{((string)sub["EmployeeName"]):-20} | {((string)sub["Department"]):-12} | {((decimal)sub["Salary"]):N0}₽");
+        }
+    }
+
+    static void GetManagementChain(DataSet ds, int employeeID)
+    {
+        DataTable employees = ds.Tables["Сотрудники"];
+        DataRow employee = employees.Rows.Find(employeeID);
+
+        if (employee == null)
+        {
+            Console.WriteLine("Сотрудник не найден");
+            return;
+        }
+
+        Console.WriteLine($"Цепочка руководства для: {employee["EmployeeName"]}");
+        Console.WriteLine("──────────────────────────────────────");
+
+        List<DataRow> chain = new List<DataRow>();
+        DataRow current = employee;
+
+        while (current != null)
+        {
+            chain.Add(current);
+            DataRow[] managers = current.GetParentRows("FK_Employees_Manager");
+            current = managers.Length > 0 ? managers[0] : null;
+        }
+
+        chain.Reverse();
+
+        Console.WriteLine("Уровень | Имя                 | Отдел");
+        Console.WriteLine("──────────────────────────────────────");
+
+        for (int i = 0; i < chain.Count; i++)
+        {
+            DataRow emp = chain[i];
+            Console.WriteLine($"{i,-7} | {((string)emp["EmployeeName"]):-20} | {((string)emp["Department"])}");
+        }
+    }
+
+    static void FindEmployeesByLevel(DataSet ds, int level)
+    {
+        DataTable employees = ds.Tables["Сотрудники"];
+        var employeesAtLevel = new List<DataRow>();
+
+        Console.WriteLine($"Сотрудники уровня {level}:");
+        Console.WriteLine("──────────────────────────────────────");
+
+        foreach (DataRow emp in employees.Rows)
+        {
+            int empLevel = GetEmployeeDepth(ds, (int)emp["EmployeeID"], new HashSet<int>(), 0);
+            if (empLevel == level)
+                employeesAtLevel.Add(emp);
+        }
+
+        if (employeesAtLevel.Count == 0)
+        {
+            Console.WriteLine("Сотрудников на этом уровне нет");
+            return;
+        }
+
+        Console.WriteLine("Имя                  | Отдел        | Зарплата");
+        Console.WriteLine("──────────────────────────────────────");
+
+        foreach (DataRow emp in employeesAtLevel)
+        {
+            Console.WriteLine($"{((string)emp["EmployeeName"]):-20} | {((string)emp["Department"]):-12} | {((decimal)emp["Salary"]):N0}₽");
+        }
+    }
+
+    static void PrintHierarchyStatistics(DataSet ds)
+    {
+        DataTable employees = ds.Tables["Сотрудники"];
+        var levelStats = new Dictionary<int, int>();
+        int maxLevel = 0;
+
+        foreach (DataRow emp in employees.Rows)
+        {
+            int empID = (int)emp["EmployeeID"];
+            int level = GetEmployeeDepth(ds, empID, new HashSet<int>(), 0);
+            if (level >= 0)
+            {
+                levelStats[level] = levelStats.ContainsKey(level) ? levelStats[level] + 1 : 1;
+                maxLevel = Math.Max(maxLevel, level);
+            }
+        }
+
+        Console.WriteLine("Уровень | Кол-во сотрудников | %");
+        Console.WriteLine("──────────────────────────────────────");
+
+        for (int i = 0; i <= maxLevel; i++)
+        {
+            int count = levelStats.ContainsKey(i) ? levelStats[i] : 0;
+            double percent = employees.Rows.Count > 0 ? (double)count / employees.Rows.Count * 100 : 0;
+            Console.WriteLine($"{i,-7} | {count,16} | {percent,5:F1}%");
+        }
+
+        Console.WriteLine($"\nВсего уровней: {maxLevel + 1}");
+        Console.WriteLine($"Всего сотрудников: {employees.Rows.Count}");
+    }
+
+    static void FindColleagues(DataSet ds, int managerID)
+    {
+        DataTable employees = ds.Tables["Сотрудники"];
+        DataRow manager = employees.Rows.Find(managerID);
+
+        if (manager == null)
+        {
+            Console.WriteLine("Менеджер не найден");
+            return;
+        }
+
+        DataRow[] directSubs = manager.GetChildRows("FK_Employees_Manager");
+
+        Console.WriteLine($"Коллеги под менеджером {manager["EmployeeName"]}:");
+        Console.WriteLine("──────────────────────────────────────");
+
+        if (directSubs.Length <= 1)
+        {
+            Console.WriteLine("Коллег нет или сотрудник один");
+            return;
+        }
+
+        Console.WriteLine("Имя                  | Зарплата     | Отдел");
+        Console.WriteLine("──────────────────────────────────────");
+
+        for (int i = 0; i < directSubs.Length; i++)
+        {
+            DataRow colleague = directSubs[i];
+            Console.WriteLine($"{((string)colleague["EmployeeName"]):-20} | {((decimal)colleague["Salary"]):N10}₽ | {((string)colleague["Department"])}");
+        }
+    }
+
+    static void GetSupervisorsAboveEmployee(DataSet ds, int employeeID)
+    {
+        DataTable employees = ds.Tables["Сотрудники"];
+        DataRow employee = employees.Rows.Find(employeeID);
+
+        if (employee == null)
+        {
+            Console.WriteLine("Сотрудник не найден");
+            return;
+        }
+
+        Console.WriteLine($"Вышестоящие для {employee["EmployeeName"]}:");
+        Console.WriteLine("──────────────────────────────────────");
+
+        List<DataRow> supervisors = new List<DataRow>();
+        DataRow current = employee;
+
+        while (true)
+        {
+            DataRow[] managers = current.GetParentRows("FK_Employees_Manager");
+            if (managers.Length == 0) break;
+
+            current = managers[0];
+            supervisors.Add(current);
+        }
+
+        if (supervisors.Count == 0)
+        {
+            Console.WriteLine("Прямых руководителей нет");
+            return;
+        }
+
+        Console.WriteLine("Должность            | Имя                 | Уровень");
+        Console.WriteLine("─────────────────────────────────────────────────");
+
+        for (int i = 0; i < supervisors.Count; i++)
+        {
+            DataRow sup = supervisors[i];
+            int level = GetEmployeeDepth(ds, (int)sup["EmployeeID"], new HashSet<int>(), 0);
+            Console.WriteLine($"{i + 1,-15} | {((string)sup["EmployeeName"]):-20} | {level}");
+        }
+    }
+
+    static int GetEmployeeDepth(DataSet ds, int empID, HashSet<int> visited, int currentDepth)
+    {
+        if (visited.Contains(empID))
+            return -1;
+
+        visited.Add(empID);
+
+        DataTable employees = ds.Tables["Сотрудники"];
+        DataRow[] empRows = employees.Select($"EmployeeID = {empID}");
+
+        if (empRows.Length == 0)
+            return currentDepth;
+
+        DataRow emp = empRows[0];
+        if (emp["ManagerID"] == DBNull.Value)
+            return currentDepth;
+
+        int managerID = (int)emp["ManagerID"];
+        return GetEmployeeDepth(ds, managerID, visited, currentDepth + 1);
+    }
+}
