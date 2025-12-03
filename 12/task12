@@ -1,0 +1,244 @@
+using System;
+using System.Data;
+
+class Program
+{
+    static void Main()
+    {
+        try
+        {
+            DataSet ds = CreateDataSet();
+            FillTestData(ds);
+            CreateRelationship(ds);
+            
+            Console.WriteLine("=== ЗАДАНИЕ 12: RowState - ОТСЛЕЖИВАНИЕ УДАЛЯЕМЫХ СТРОК ===\n");
+            
+            Console.WriteLine("1. ИСХОДНОЕ СОСТОЯНИЕ:");
+            PrintInitialState(ds);
+            Console.WriteLine();
+            
+            Console.WriteLine("2. ОПЕРАЦИИ НАД ТОВАРАМИ:");
+            PerformOperations(ds);
+            Console.WriteLine();
+            
+            Console.WriteLine("3. ОТЧЁТ О УДАЛЯЕМЫХ СТРОКАХ:");
+            PrintDeletedRowsReport(ds);
+            Console.WriteLine();
+            
+            Console.WriteLine("4. ОТМЕНА УДАЛЕНИЯ ОДНОГО ТОВАРА:");
+            CancelDeleteSpecificRow(ds, 10);
+            Console.WriteLine();
+            
+            Console.WriteLine("5. ФИНАЛЬНОЕ СОСТОЯНИЕ:");
+            PrintFinalState(ds);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"ОШИБКА: {ex.Message}");
+        }
+    }
+    
+    static DataSet CreateDataSet()
+    {
+        DataSet ds = new DataSet("ShopDB");
+        
+        DataTable categories = new DataTable("Категории");
+        categories.Columns.Add("CategoryID", typeof(int));
+        categories.Columns.Add("CategoryName", typeof(string));
+        categories.PrimaryKey = new DataColumn[] { categories.Columns["CategoryID"] };
+        
+        DataTable products = new DataTable("Товары");
+        products.Columns.Add("ProductID", typeof(int));
+        products.Columns.Add("ProductName", typeof(string));
+        products.Columns.Add("Price", typeof(decimal));
+        products.Columns.Add("Quantity", typeof(int));
+        products.Columns.Add("CategoryID", typeof(int));
+        products.PrimaryKey = new DataColumn[] { products.Columns["ProductID"] };
+        
+        ds.Tables.Add(categories);
+        ds.Tables.Add(products);
+        
+        return ds;
+    }
+    
+    static void FillTestData(DataSet ds)
+    {
+        DataTable categories = ds.Tables["Категории"];
+        DataTable products = ds.Tables["Товары"];
+        
+        categories.Rows.Add(1, "Электроника");
+        categories.Rows.Add(2, "Одежда");
+        categories.Rows.Add(3, "Книги");
+        
+        products.Rows.Add(1, "iPhone 15", 129990m, 5, 1);
+        products.Rows.Add(2, "Samsung S24", 89990m, 8, 1);
+        products.Rows.Add(3, "Джинсы Levi's", 5990m, 20, 2);
+        products.Rows.Add(4, "Куртка Adidas", 12990m, 10, 2);
+        products.Rows.Add(5, "Война и мир", 1290m, 100, 3);
+        products.Rows.Add(6, "C# in Depth", 2890m, 25, 3);
+        products.Rows.Add(7, "MacBook Pro", 199990m, 2, 1);
+        products.Rows.Add(8, "Футболка Nike", 2490m, 50, 2);
+        products.Rows.Add(9, "iPad Air", 74990m, 3, 1);
+        products.Rows.Add(10, "Холодильник LG", 45990m, 2, 1);
+        products.Rows.Add(11, "Стиральная машина", 37990m, 3, 1);
+    }
+    
+    static void CreateRelationship(DataSet ds)
+    {
+        DataTable categories = ds.Tables["Категории"];
+        DataTable products = ds.Tables["Товары"];
+        
+        DataRelation relation = new DataRelation(
+            "FK_Categories_Products",
+            categories.Columns["CategoryID"],
+            products.Columns["CategoryID"],
+            true
+        );
+        ds.Relations.Add(relation);
+    }
+    
+    static void PerformOperations(DataSet ds)
+    {
+        DataTable products = ds.Tables["Товары"];
+        
+        // Добавляем 2 новых товара
+        products.Rows.Add(12, "Новый смартфон", 69990m, 6, 1);
+        products.Rows.Add(13, "Новые кроссовки", 8990m, 15, 2);
+        Console.WriteLine("✓ Добавлены товары ID=12,13");
+        
+        // Модифицируем 2 товара
+        DataRow product3 = products.Rows.Find(3);
+        product3["Price"] = 6490m;
+        DataRow product5 = products.Rows.Find(5);
+        product5["Quantity"] = 150;
+        Console.WriteLine("✓ Изменены товары ID=3,5");
+        
+        // Помечаем 3 товара на удаление
+        DataRow product1 = products.Rows.Find(1);
+        product1.Delete();
+        DataRow product4 = products.Rows.Find(4);
+        product4.Delete();
+        DataRow product10 = products.Rows.Find(10);
+        product10.Delete();
+        Console.WriteLine("✓ Помечены на удаление товары ID=1,4,10");
+        
+        Console.WriteLine("Изменения НЕ сохранены (только в памяти)");
+    }
+    
+    static void PrintDeletedRowsReport(DataSet ds)
+    {
+        DataTable products = ds.Tables["Товары"];
+        DataRow[] deletedRows = products.Select("", "", DataViewRowState.Deleted);
+        
+        Console.WriteLine("УДАЛЯЕМЫЕ ТОВАРЫ:");
+        Console.WriteLine("═══════════════════════════════════════════════════════");
+        Console.WriteLine("ID  | Товар                | Категория      | Цена");
+        Console.WriteLine("────────────────────────────────────────────────────────");
+        
+        int totalDeleted = 0;
+        foreach (DataRow deletedRow in deletedRows)
+        {
+            try
+            {
+                // Получаем информацию из Original версии удалённой строки
+                int productID = (int)deletedRow["ProductID", DataRowVersion.Original];
+                string productName = (string)deletedRow["ProductName", DataRowVersion.Original];
+                decimal price = (decimal)deletedRow["Price", DataRowVersion.Original];
+                int categoryID = (int)deletedRow["CategoryID", DataRowVersion.Original];
+                
+                // Получаем родительскую категорию для удалённой строки
+                DataRow[] parentCategories = deletedRow.GetParentRows("FK_Categories_Products", DataRowVersion.Original);
+                string categoryName = parentCategories.Length > 0 ? 
+                    (string)parentCategories[0]["CategoryName"] : "НЕ ИЗВЕСТНО";
+                
+                Console.WriteLine($"{productID,3} | {productName,-20} | {categoryName,-14} | {price:N0}₽");
+                totalDeleted++;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"  ОШИБКА при чтении удалённой строки: {ex.Message}");
+            }
+        }
+        
+        Console.WriteLine($"\nВсего помечено на удаление: {totalDeleted} товаров");
+        
+        Console.WriteLine("\nПРОГНОЗ ПО КАТЕГОРИЯМ:");
+        PrintCategoryForecast(ds);
+    }
+    
+    static void PrintCategoryForecast(DataSet ds)
+    {
+        DataTable categories = ds.Tables["Категории"];
+        DataTable products = ds.Tables["Товары"];
+        
+        Console.WriteLine("Категория      | Сейчас | Будет | Изменение");
+        Console.WriteLine("──────────────────────────────────────");
+        
+        foreach (DataRow cat in categories.Rows)
+        {
+            int catID = (int)cat["CategoryID"];
+            
+            // Текущие товары (все состояния кроме Deleted)
+            DataRow[] currentProducts = cat.GetChildRows("FK_Categories_Products");
+            int currentCount = currentProducts.Length;
+            
+            // Будущие товары (исключаем Deleted)
+            DataRow[] futureProducts = products.Select($"CategoryID = {catID}", "", 
+                DataViewRowState.CurrentRows | DataViewRowState.Added | DataViewRowState.ModifiedCurrent);
+            int futureCount = futureProducts.Length;
+            
+            string catName = (string)cat["CategoryName"];
+            Console.WriteLine($"{catName,-14} | {currentCount,6} | {futureCount,5} | {futureCount - currentCount:+0;-0}");
+        }
+    }
+    
+    static void CancelDeleteSpecificRow(DataSet ds, int productID)
+    {
+        DataTable products = ds.Tables["Товары"];
+        DataRow productRow = products.Rows.Find(productID);
+        
+        if (productRow != null && productRow.RowState == DataRowState.Deleted)
+        {
+            productRow.RejectChanges();
+            Console.WriteLine($"✓ Отмена удаления товара ID={productID}: {productRow["ProductName"]}");
+        }
+        else
+        {
+            Console.WriteLine($"Товар ID={productID} не помечен на удаление");
+        }
+    }
+    
+    static void PrintInitialState(DataSet ds)
+    {
+        Console.WriteLine("Изначальное количество:");
+        Console.WriteLine($"Категорий: {ds.Tables["Категории"].Rows.Count}");
+        Console.WriteLine($"Товаров: {ds.Tables["Товары"].Rows.Count}");
+    }
+    
+    static void PrintFinalState(DataSet ds)
+    {
+        DataTable products = ds.Tables["Товары"];
+        
+        Console.WriteLine("ФИНАЛЬНОЕ СОСТОЯНИЕ (до AcceptChanges):");
+        Console.WriteLine("═══════════════════════════════════════");
+        
+        int added = 0, modified = 0, deleted = 0, unchanged = 0;
+        
+        foreach (DataRow row in products.Rows)
+        {
+            switch (row.RowState)
+            {
+                case DataRowState.Added: added++; break;
+                case DataRowState.Modified: modified++; break;
+                case DataRowState.Deleted: deleted++; break;
+                case DataRowState.Unchanged: unchanged++; break;
+            }
+        }
+        
+        Console.WriteLine($"Добавлено: {added}");
+        Console.WriteLine($"Изменено: {modified}");
+        Console.WriteLine($"На удаление: {deleted}");
+        Console.WriteLine($"Без изменений: {unchanged}");
+        Console.WriteLine($"Всего строк: {products.Rows.Count}");
+    }
+}
