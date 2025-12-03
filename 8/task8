@@ -1,0 +1,237 @@
+using System;
+using System.Data;
+
+class Program
+{
+    static void Main()
+    {
+        try
+        {
+            DataSet ds = CreateDataSet();
+            FillTestData(ds);
+            CreateRelationship(ds);
+            CreateCalculatedColumns(ds);
+            
+            Console.WriteLine("=== ЗАДАНИЕ 8: РАСЧИТЫВАЕМЫЕ ПОЛЯ ЧЕРЕЗ DataRelation ===\n");
+            
+            Console.WriteLine("1. КАТЕГОРИИ С РАСЧИТЫВАЕМЫМИ ПОЛЯМИ:");
+            Console.WriteLine("═══════════════════════════════════════");
+            PrintCategoriesWithCalculations(ds);
+            Console.WriteLine();
+            
+            Console.WriteLine("2. ДОБАВЛЯЕМ НОВЫЙ ТОВАР:");
+            Console.WriteLine("═══════════════════════════════════════");
+            AddNewProductAndCheckCalculations(ds);
+            Console.WriteLine();
+            
+            Console.WriteLine("3. УДАЛЯЕМ ТОВАР И ПРОВЕРЯЕМ ПЕРЕСЧЁТ:");
+            Console.WriteLine("═══════════════════════════════════════");
+            DeleteProductAndCheckCalculations(ds);
+            Console.WriteLine();
+            
+            Console.WriteLine("4. РУЧНОЙ ПЕРЕСЧЁТ СУММАРНОЙ СТОИМОСТИ:");
+            Console.WriteLine("═══════════════════════════════════════");
+            RecalculateTotalValues(ds);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"ОШИБКА: {ex.Message}");
+        }
+    }
+    
+    static DataSet CreateDataSet()
+    {
+        DataSet ds = new DataSet("ShopDB");
+        
+        DataTable categories = new DataTable("Категории");
+        categories.Columns.Add("CategoryID", typeof(int));
+        categories.Columns.Add("CategoryName", typeof(string));
+        categories.Columns.Add("Description", typeof(string));
+        categories.PrimaryKey = new DataColumn[] { categories.Columns["CategoryID"] };
+        
+        DataTable products = new DataTable("Товары");
+        products.Columns.Add("ProductID", typeof(int));
+        products.Columns.Add("ProductName", typeof(string));
+        products.Columns.Add("Price", typeof(decimal));
+        products.Columns.Add("Quantity", typeof(int));
+        products.Columns.Add("CategoryID", typeof(int));
+        products.PrimaryKey = new DataColumn[] { products.Columns["ProductID"] };
+        
+        ds.Tables.Add(categories);
+        ds.Tables.Add(products);
+        
+        return ds;
+    }
+    
+    static void FillTestData(DataSet ds)
+    {
+        DataTable categories = ds.Tables["Категории"];
+        DataTable products = ds.Tables["Товары"];
+        
+        categories.Rows.Add(1, "Электроника", "Смартфоны, планшеты, гаджеты");
+        categories.Rows.Add(2, "Одежда", "Мужская и женская одежда");
+        categories.Rows.Add(3, "Книги", "Художественная и учебная литература");
+        categories.Rows.Add(4, "Бытовая техника", "Холодильники, стиральные машины");
+        
+        products.Rows.Add(1, "iPhone 15 Pro", 129990m, 5, 1);
+        products.Rows.Add(2, "Samsung Galaxy S24", 89990m, 8, 1);
+        products.Rows.Add(3, "Xiaomi 14", 59990m, 12, 1);
+        products.Rows.Add(4, "iPad Air", 74990m, 3, 1);
+        products.Rows.Add(5, "Джинсы Levi's", 5990m, 20, 2);
+        products.Rows.Add(6, "Куртка Adidas", 12990m, 10, 2);
+        products.Rows.Add(7, "Футболка Nike", 2490m, 50, 2);
+        products.Rows.Add(8, "Война и мир", 1290m, 100, 3);
+        products.Rows.Add(9, "C# in Depth", 2890m, 25, 3);
+        products.Rows.Add(10, "Холодильник LG", 45990m, 2, 4);
+        products.Rows.Add(11, "Стиральная машина Bosch", 37990m, 3, 4);
+    }
+    
+    static void CreateRelationship(DataSet ds)
+    {
+        DataTable categories = ds.Tables["Категории"];
+        DataTable products = ds.Tables["Товары"];
+        
+        DataRelation relation = new DataRelation(
+            "FK_Categories_Products",
+            categories.Columns["CategoryID"],
+            products.Columns["CategoryID"],
+            true
+        );
+        ds.Relations.Add(relation);
+    }
+    
+    static void CreateCalculatedColumns(DataSet ds)
+    {
+        DataTable categories = ds.Tables["Категории"];
+        
+        try
+        {
+            DataColumn totalCount = new DataColumn("TotalProductCount", typeof(int));
+            totalCount.Expression = "CountChild(FK_Categories_Products)";
+            categories.Columns.Add(totalCount);
+            
+            Console.WriteLine("✓ TotalProductCount (CountChild) - создано");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"ОШИБКА TotalProductCount: {ex.Message}");
+        }
+        
+        try
+        {
+            DataColumn totalValue = new DataColumn("TotalCategoryValue", typeof(decimal));
+            totalValue.Expression = "Parent(FK_Categories_Products).Sum(Price * Quantity)";
+            categories.Columns.Add(totalValue);
+            
+            Console.WriteLine("✗ TotalCategoryValue (сложное выражение) - НЕ поддерживается");
+            categories.Columns.Remove(totalValue);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"ОШИБКА TotalCategoryValue: {ex.Message}");
+        }
+    }
+    
+    static void PrintCategoriesWithCalculations(DataSet ds)
+    {
+        DataTable categories = ds.Tables["Категории"];
+        
+        Console.WriteLine("Категория            | Товаров | Сумма (ручная)");
+        Console.WriteLine("────────────────────────────────────────────");
+        
+        foreach (DataRow cat in categories.Rows)
+        {
+            int catID = (int)cat["CategoryID"];
+            string catName = (string)cat["CategoryName"];
+            int productCount = cat["TotalProductCount"] != DBNull.Value ? (int)cat["TotalProductCount"] : 0;
+            decimal manualTotal = CalculateManualTotalValue(ds, catID);
+            
+            Console.WriteLine($"{catName,-20} | {productCount,7} | {manualTotal,12:N0}₽");
+        }
+    }
+    
+    static void AddNewProductAndCheckCalculations(DataSet ds)
+    {
+        DataTable products = ds.Tables["Товары"];
+        DataTable categories = ds.Tables["Категории"];
+        
+        Console.WriteLine("ДО добавления:");
+        PrintCategoryQuickInfo(ds, 1);
+        
+        products.Rows.Add(12, "Новый планшет", 49990m, 4, 1);
+        
+        Console.WriteLine("\nПОСЛЕ добавления:");
+        PrintCategoryQuickInfo(ds, 1);
+        
+        Console.WriteLine($"\nTotalProductCount обновился: {(int)categories.Rows[0]["TotalProductCount"]}");
+    }
+    
+    static void DeleteProductAndCheckCalculations(DataSet ds)
+    {
+        DataTable products = ds.Tables["Товары"];
+        DataTable categories = ds.Tables["Категории"];
+        
+        Console.WriteLine("ДО удаления:");
+        PrintCategoryQuickInfo(ds, 1);
+        
+        DataRow productToDelete = products.Rows.Find(12);
+        if (productToDelete != null)
+            productToDelete.Delete();
+        
+        Console.WriteLine("\nПОСЛЕ удаления:");
+        PrintCategoryQuickInfo(ds, 1);
+        
+        Console.WriteLine($"\nTotalProductCount обновился: {(int)categories.Rows[0]["TotalProductCount"]}");
+    }
+    
+    static void PrintCategoryQuickInfo(DataSet ds, int categoryID)
+    {
+        DataTable categories = ds.Tables["Категории"];
+        DataRow cat = categories.Rows.Find(categoryID);
+        
+        if (cat != null)
+        {
+            int count = cat["TotalProductCount"] != DBNull.Value ? (int)cat["TotalProductCount"] : 0;
+            decimal manualTotal = CalculateManualTotalValue(ds, categoryID);
+            Console.WriteLine($"Электроника: {count} товаров, {manualTotal:N0}₽");
+        }
+    }
+    
+    static void RecalculateTotalValues(DataSet ds)
+    {
+        DataTable categories = ds.Tables["Категории"];
+        
+        Console.WriteLine("РУЧНОЙ ПЕРЕСЧЁТ СУММАРНОЙ СТОИМОСТИ:");
+        Console.WriteLine("──────────────────────────────────────");
+        
+        foreach (DataRow cat in categories.Rows)
+        {
+            int catID = (int)cat["CategoryID"];
+            string catName = (string)cat["CategoryName"];
+            int count = cat["TotalProductCount"] != DBNull.Value ? (int)cat["TotalProductCount"] : 0;
+            decimal totalValue = CalculateManualTotalValue(ds, catID);
+            
+            Console.WriteLine($"{catName,-20} | {count,7} | {totalValue,12:N0}₽");
+        }
+    }
+    
+    static decimal CalculateManualTotalValue(DataSet ds, int categoryID)
+    {
+        DataTable categories = ds.Tables["Категории"];
+        DataRow categoryRow = categories.Rows.Find(categoryID);
+        
+        if (categoryRow == null) return 0m;
+        
+        DataRow[] products = categoryRow.GetChildRows("FK_Categories_Products");
+        decimal total = 0m;
+        
+        foreach (DataRow product in products)
+        {
+            decimal price = (decimal)product["Price"];
+            int quantity = (int)product["Quantity"];
+            total += price * quantity;
+        }
+        
+        return total;
+    }
+}
