@@ -1,0 +1,240 @@
+using System;
+using System.Data;
+using System.Collections.Generic;
+
+class Program
+{
+    static void Main()
+    {
+        try
+        {
+            DataSet ds = CreateDataSet();
+            FillTestData(ds);
+            CreateSelfRelationship(ds);
+            
+            Console.WriteLine("=== ЗАДАНИЕ 4: ОТНОШЕНИЕ \"САМ К СЕБЕ\" ===\n");
+            
+            Console.WriteLine("1. ИНФОРМАЦИЯ ОБ ОТНОШЕНИИ:");
+            Console.WriteLine("═══════════════════════════════════════");
+            PrintRelationInfo(ds);
+            Console.WriteLine();
+            
+            Console.WriteLine("2. ДЕРЕВО ИЕРАРХИИ СОТРУДНИКОВ:");
+            Console.WriteLine("═══════════════════════════════════════");
+            PrintHierarchyTree(ds);
+            Console.WriteLine();
+            
+            Console.WriteLine("3. СОТРУДНИКИ С РУКОВОДИТЕЛЯМИ:");
+            Console.WriteLine("═══════════════════════════════════════");
+            PrintEmployeesWithManagers(ds);
+            Console.WriteLine();
+            
+            Console.WriteLine("4. МЕНЕДЖЕРЫ И ПОДЧИНЁННЫЕ:");
+            Console.WriteLine("═══════════════════════════════════════");
+            PrintManagersWithSubordinates(ds);
+            Console.WriteLine();
+            
+            Console.WriteLine("5. ГЛУБИНА ИЕРАРХИИ:");
+            Console.WriteLine("═══════════════════════════════════════");
+            CalculateHierarchyDepth(ds);
+            Console.WriteLine();
+            
+            Console.WriteLine("6. ПРОВЕРКА ЦИКЛИЧЕСКИХ ССЫЛОК:");
+            Console.WriteLine("═══════════════════════════════════════");
+            CheckCircularReferences(ds);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"ОШИБКА: {ex.Message}");
+        }
+    }
+    
+    static DataSet CreateDataSet()
+    {
+        DataSet ds = new DataSet("CompanyDB");
+        
+        DataTable employees = new DataTable("Сотрудники");
+        employees.Columns.Add("EmployeeID", typeof(int));
+        employees.Columns.Add("EmployeeName", typeof(string));
+        employees.Columns.Add("Department", typeof(string));
+        employees.Columns.Add("Salary", typeof(decimal));
+        employees.Columns.Add("ManagerID", typeof(int));
+        employees.PrimaryKey = new DataColumn[] { employees.Columns["EmployeeID"] };
+        
+        ds.Tables.Add(employees);
+        return ds;
+    }
+    
+    static void FillTestData(DataSet ds)
+    {
+        DataTable employees = ds.Tables["Сотрудники"];
+        
+        employees.Rows.Add(1, "Иван Петров", "Генеральный директор", 500000m, DBNull.Value);
+        employees.Rows.Add(2, "Мария Сидорова", "HR Директор", 250000m, 1);
+        employees.Rows.Add(3, "Алексей Новиков", "IT Директор", 300000m, 1);
+        employees.Rows.Add(4, "Елена Козлова", "HR Менеджер", 150000m, 2);
+        employees.Rows.Add(5, "Дмитрий Волков", "Lead Developer", 200000m, 3);
+        employees.Rows.Add(6, "Анна Смирнова", "HR Специалист", 120000m, 4);
+        employees.Rows.Add(7, "Петр Сергеев", "Senior Developer", 180000m, 5);
+        employees.Rows.Add(8, "Ольга Иванова", "Junior Developer", 90000m, 5);
+        employees.Rows.Add(9, "Сергей Морозов", "QA Engineer", 110000m, 5);
+    }
+    
+    static void CreateSelfRelationship(DataSet ds)
+    {
+        DataTable employees = ds.Tables["Сотрудники"];
+        
+        DataRelation selfRelation = new DataRelation(
+            "FK_Employees_Manager",
+            employees.Columns["EmployeeID"],
+            employees.Columns["ManagerID"],
+            false
+        );
+        
+        ds.Relations.Add(selfRelation);
+    }
+    
+    static void PrintRelationInfo(DataSet ds)
+    {
+        DataRelation relation = ds.Relations["FK_Employees_Manager"];
+        
+        Console.WriteLine($"Имя: {relation.RelationName}");
+        Console.WriteLine($"Таблица: {relation.ParentTable.TableName} (самоссылка)");
+        Console.WriteLine($"Колонки: EmployeeID → ManagerID");
+    }
+    
+    static void PrintHierarchyTree(DataSet ds)
+    {
+        DataTable employees = ds.Tables["Сотрудники"];
+        DataRow[] rootEmployees = employees.Select("ManagerID IS NULL");
+        
+        PrintTreeRecursive(rootEmployees, ds, 0);
+    }
+    
+    static void PrintTreeRecursive(DataRow[] employees, DataSet ds, int level)
+    {
+        string indent = new string(' ', level * 4);
+        string prefix = level == 0 ? "📊 " : "├── ";
+        
+        foreach (DataRow emp in employees)
+        {
+            int empID = (int)emp["EmployeeID"];
+            string name = (string)emp["EmployeeName"];
+            string dept = (string)emp["Department"];
+            decimal salary = (decimal)emp["Salary"];
+            
+            Console.WriteLine($"{indent}{prefix}{name} (ID:{empID}) - {dept} - {salary:N0}₽");
+            
+            DataRow[] children = emp.GetChildRows("FK_Employees_Manager");
+            if (children.Length > 0)
+                PrintTreeRecursive(children, ds, level + 1);
+        }
+    }
+    
+    static void PrintEmployeesWithManagers(DataSet ds)
+    {
+        DataTable employees = ds.Tables["Сотрудники"];
+        
+        Console.WriteLine("Сотрудник             | Руководитель         | Отдел");
+        Console.WriteLine("─────────────────────────────────────────────────────");
+        
+        foreach (DataRow emp in employees.Rows)
+        {
+            string empName = (string)emp["EmployeeName"];
+            string dept = (string)emp["Department"];
+            
+            DataRow[] managerRows = emp.GetParentRows("FK_Employees_Manager");
+            string managerName = managerRows.Length > 0 ? (string)managerRows[0]["EmployeeName"] : "Нет руководителя";
+            
+            Console.WriteLine($"{empName,-20} | {managerName,-20} | {dept}");
+        }
+    }
+    
+    static void PrintManagersWithSubordinates(DataSet ds)
+    {
+        DataTable employees = ds.Tables["Сотрудники"];
+        
+        Console.WriteLine("Менеджер              | Подчинённых");
+        Console.WriteLine("─────────────────────────────────");
+        
+        foreach (DataRow emp in employees.Rows)
+        {
+            DataRow[] subordinates = emp.GetChildRows("FK_Employees_Manager");
+            if (subordinates.Length > 0)
+            {
+                string managerName = (string)emp["EmployeeName"];
+                Console.WriteLine($"{managerName,-20} | {subordinates.Length,11}");
+                
+                foreach (DataRow sub in subordinates)
+                {
+                    Console.WriteLine($"{' ',23}└── {sub["EmployeeName"]} ({sub["Department"]})");
+                }
+                Console.WriteLine();
+            }
+        }
+    }
+    
+    static void CalculateHierarchyDepth(DataSet ds)
+    {
+        DataTable employees = ds.Tables["Сотрудники"];
+        
+        Console.WriteLine("Сотрудник             | Уровень");
+        Console.WriteLine("─────────────────────────────");
+        
+        foreach (DataRow emp in employees.Rows)
+        {
+            int empID = (int)emp["EmployeeID"];
+            int depth = GetEmployeeDepth(ds, empID, new HashSet<int>(), 0);
+            
+            string name = (string)emp["EmployeeName"];
+            string levelIndicator = new string('─', Math.Min(depth, 20));
+            Console.WriteLine($"{name,-20} | {depth} ({levelIndicator})");
+        }
+    }
+    
+    static int GetEmployeeDepth(DataSet ds, int empID, HashSet<int> visited, int currentDepth)
+    {
+        if (visited.Contains(empID))
+            return -1;
+        
+        visited.Add(empID);
+        
+        DataTable employees = ds.Tables["Сотрудники"];
+        DataRow[] empRows = employees.Select($"EmployeeID = {empID}");
+        
+        if (empRows.Length == 0)
+            return currentDepth;
+        
+        DataRow emp = empRows[0];
+        if (emp["ManagerID"] == DBNull.Value)
+            return currentDepth;
+        
+        int managerID = (int)emp["ManagerID"];
+        return GetEmployeeDepth(ds, managerID, visited, currentDepth + 1);
+    }
+    
+    static void CheckCircularReferences(DataSet ds)
+    {
+        DataTable employees = ds.Tables["Сотрудники"];
+        int cycles = 0;
+        
+        Console.WriteLine("Циклические ссылки:");
+        Console.WriteLine("────────────────────");
+        
+        foreach (DataRow emp in employees.Rows)
+        {
+            int empID = (int)emp["EmployeeID"];
+            HashSet<int> visited = new HashSet<int>();
+            int depth = GetEmployeeDepth(ds, empID, visited, 0);
+            
+            if (depth == -1)
+            {
+                string name = (string)emp["EmployeeName"];
+                Console.WriteLine($"⚠️ ЦИКЛ: {name} (ID: {empID})");
+                cycles++;
+            }
+        }
+        
+        Console.WriteLine($"\nЦиклов найдено: {cycles}");
+    }
+}
