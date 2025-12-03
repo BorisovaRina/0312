@@ -1,0 +1,239 @@
+using System;
+using System.Data;
+using System.Collections.Generic;
+
+class Program
+{
+    static void Main()
+    {
+        try
+        {
+            DataSet ds = CreateDataSet();
+            FillTestData(ds);
+            CreateRelationships(ds);
+            
+            Console.WriteLine("=== ЗАДАНИЕ 13: RowState.Added - НОВЫЕ РЕГИСТРАЦИИ ===\n");
+            
+            Console.WriteLine("1. ИСХОДНЫЕ ДАННЫЕ:");
+            PrintInitialStatistics(ds);
+            Console.WriteLine();
+            
+            Console.WriteLine("2. ДОБАВЛЯЕМ НОВЫЕ РЕГИСТРАЦИИ:");
+            AddNewRegistrations(ds);
+            Console.WriteLine();
+            
+            Console.WriteLine("3. ОТЧЁТ О НОВЫХ РЕГИСТРАЦИЯХ:");
+            PrintNewRegistrationsReport(ds);
+            Console.WriteLine();
+            
+            Console.WriteLine("4. СТАТИСТИКА НОВЫХ РЕГИСТРАЦИЙ:");
+            PrintNewRegistrationStats(ds);
+            Console.WriteLine();
+            
+            Console.WriteLine("5. ВАЛИДАЦИЯ СВЯЗЕЙ:");
+            ValidateNewRegistrations(ds);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"ОШИБКА: {ex.Message}");
+        }
+    }
+    
+    static DataSet CreateDataSet()
+    {
+        DataSet ds = new DataSet("UniversityDB");
+        
+        DataTable students = new DataTable("Студенты");
+        students.Columns.Add("StudentID", typeof(int));
+        students.Columns.Add("StudentName", typeof(string));
+        students.Columns.Add("Email", typeof(string));
+        students.PrimaryKey = new DataColumn[] { students.Columns["StudentID"] };
+        
+        DataTable courses = new DataTable("Курсы");
+        courses.Columns.Add("CourseID", typeof(string));
+        courses.Columns.Add("CourseName", typeof(string));
+        courses.Columns.Add("Instructor", typeof(string));
+        courses.PrimaryKey = new DataColumn[] { courses.Columns["CourseID"] };
+        
+        DataTable registration = new DataTable("Регистрация");
+        registration.Columns.Add("RegistrationID", typeof(int));
+        registration.Columns.Add("StudentID", typeof(int));
+        registration.Columns.Add("CourseID", typeof(string));
+        registration.Columns.Add("EnrollmentDate", typeof(DateTime));
+        registration.Columns.Add("Grade", typeof(double));
+        registration.PrimaryKey = new DataColumn[] { registration.Columns["RegistrationID"] };
+        
+        ds.Tables.Add(students);
+        ds.Tables.Add(courses);
+        ds.Tables.Add(registration);
+        
+        return ds;
+    }
+    
+    static void FillTestData(DataSet ds)
+    {
+        DataTable students = ds.Tables["Студенты"];
+        DataTable courses = ds.Tables["Курсы"];
+        DataTable registration = ds.Tables["Регистрация"];
+        
+        students.Rows.Add(101, "Иван Петров", "ivan@example.com");
+        students.Rows.Add(102, "Мария Сидорова", "maria@example.com");
+        students.Rows.Add(103, "Петр Иванов", "petr@example.com");
+        
+        courses.Rows.Add("C001", "C# Programming", "Дмитрий Волков");
+        courses.Rows.Add("C002", "Database Design", "Светлана Морозова");
+        courses.Rows.Add("C003", "Web Development", "Алексей Новиков");
+        
+        registration.Rows.Add(1, 101, "C001", new DateTime(2024, 1, 15), 4.5);
+        registration.Rows.Add(2, 102, "C002", new DateTime(2024, 1, 20), 3.8);
+    }
+    
+    static void CreateRelationships(DataSet ds)
+    {
+        DataTable students = ds.Tables["Студенты"];
+        DataTable courses = ds.Tables["Курсы"];
+        DataTable registration = ds.Tables["Регистрация"];
+        
+        DataRelation rel1 = new DataRelation(
+            "FK_Students_Registration",
+            students.Columns["StudentID"],
+            registration.Columns["StudentID"],
+            true
+        );
+        ds.Relations.Add(rel1);
+        
+        DataRelation rel2 = new DataRelation(
+            "FK_Courses_Registration",
+            courses.Columns["CourseID"],
+            registration.Columns["CourseID"],
+            true
+        );
+        ds.Relations.Add(rel2);
+    }
+    
+    static void AddNewRegistrations(DataSet ds)
+    {
+        DataTable registration = ds.Tables["Регистрация"];
+        
+        // Новые регистрации (RowState.Added)
+        registration.Rows.Add(3, 101, "C002", new DateTime(2024, 2, 1), DBNull.Value);
+        registration.Rows.Add(4, 101, "C003", new DateTime(2024, 2, 5), DBNull.Value);
+        registration.Rows.Add(5, 103, "C001", new DateTime(2024, 2, 10), DBNull.Value);
+        registration.Rows.Add(6, 999, "C004", new DateTime(2024, 2, 15), DBNull.Value); // Некорректный студент
+        registration.Rows.Add(7, 102, "C999", new DateTime(2024, 2, 20), DBNull.Value); // Некорректный курс
+        
+        Console.WriteLine("✓ Добавлено 5 новых регистраций (включая некорректные)");
+    }
+    
+    static void PrintNewRegistrationsReport(DataSet ds)
+    {
+        DataTable registration = ds.Tables["Регистрация"];
+        DataRow[] newRegistrations = registration.Select("", "", DataViewRowState.Added);
+        
+        Console.WriteLine("НОВЫЕ РЕГИСТРАЦИИ (RowState.Added):");
+        Console.WriteLine("═══════════════════════════════════════════════════════");
+        Console.WriteLine("ID  | Студент             | Курс             | Дата       | Статус");
+        Console.WriteLine("────────────────────────────────────────────────────────────────");
+        
+        foreach (DataRow newReg in newRegistrations)
+        {
+            int regID = (int)newReg["RegistrationID"];
+            int studentID = (int)newReg["StudentID"];
+            string courseID = (string)newReg["CourseID"];
+            DateTime date = (DateTime)newReg["EnrollmentDate"];
+            
+            // Получаем информацию о студенте
+            DataRow[] studentRows = newReg.GetParentRows("FK_Students_Registration");
+            string studentName = studentRows.Length > 0 ? (string)studentRows[0]["StudentName"] : "СТУДЕНТ НЕ НАЙДЕН";
+            
+            // Получаем информацию о курсе
+            DataRow[] courseRows = newReg.GetParentRows("FK_Courses_Registration");
+            string courseName = courseRows.Length > 0 ? (string)courseRows[0]["CourseName"] : "КУРС НЕ НАЙДЕН";
+            
+            string status = (studentRows.Length > 0 && courseRows.Length > 0) ? "✓ ВАЛИДНА" : "✗ НЕВАЛИДНА";
+            
+            Console.WriteLine($"{regID,3} | {studentName,-20} | {courseName,-17} | {date:dd.MM.yy} | {status}");
+        }
+    }
+    
+    static void PrintNewRegistrationStats(DataSet ds)
+    {
+        DataTable registration = ds.Tables["Регистрация"];
+        DataRow[] newRegistrations = registration.Select("", "", DataViewRowState.Added);
+        
+        var studentStats = new Dictionary<int, int>();
+        var courseStats = new Dictionary<string, int>();
+        
+        foreach (DataRow newReg in newRegistrations)
+        {
+            int studentID = (int)newReg["StudentID"];
+            string courseID = (string)newReg["CourseID"];
+            
+            studentStats[studentID] = studentStats.ContainsKey(studentID) ? studentStats[studentID] + 1 : 1;
+            courseStats[courseID] = courseStats.ContainsKey(courseID) ? courseStats[courseID] + 1 : 1;
+        }
+        
+        Console.WriteLine("\nНОВЫЕ РЕГИСТРАЦИИ ПО СТУДЕНТАМ:");
+        Console.WriteLine("Студент             | Новых курсов");
+        Console.WriteLine("──────────────────────────────");
+        foreach (var stat in studentStats)
+        {
+            DataTable students = ds.Tables["Студенты"];
+            DataRow[] studentRows = students.Select($"StudentID = {stat.Key}");
+            string studentName = studentRows.Length > 0 ? (string)studentRows[0]["StudentName"] : "Неизвестен";
+            Console.WriteLine($"{studentName,-20} | {stat.Value,12}");
+        }
+        
+        Console.WriteLine("\nНОВЫЕ РЕГИСТРАЦИИ ПО КУРСАМ:");
+        Console.WriteLine("Курс                | Новых студентов");
+        Console.WriteLine("──────────────────────────────");
+        foreach (var stat in courseStats)
+        {
+            DataTable courses = ds.Tables["Курсы"];
+            DataRow[] courseRows = courses.Select($"CourseID = '{stat.Key}'");
+            string courseName = courseRows.Length > 0 ? (string)courseRows[0]["CourseName"] : "Неизвестен";
+            Console.WriteLine($"{courseName,-20} | {stat.Value,14}");
+        }
+        
+        Console.WriteLine($"\nВсего новых регистраций: {newRegistrations.Length}");
+    }
+    
+    static void ValidateNewRegistrations(DataSet ds)
+    {
+        DataTable registration = ds.Tables["Регистрация"];
+        DataRow[] newRegistrations = registration.Select("", "", DataViewRowState.Added);
+        
+        int valid = 0, invalidStudent = 0, invalidCourse = 0;
+        
+        Console.WriteLine("\nВАЛИДАЦИЯ НОВЫХ РЕГИСТРАЦИЙ:");
+        Console.WriteLine("═══════════════════════════════════════");
+        
+        foreach (DataRow newReg in newRegistrations)
+        {
+            DataRow[] studentRows = newReg.GetParentRows("FK_Students_Registration");
+            DataRow[] courseRows = newReg.GetParentRows("FK_Courses_Registration");
+            
+            if (studentRows.Length > 0 && courseRows.Length > 0)
+                valid++;
+            else if (studentRows.Length == 0)
+                invalidStudent++;
+            else if (courseRows.Length == 0)
+                invalidCourse++;
+        }
+        
+        Console.WriteLine($"Валидных: {valid}");
+        Console.WriteLine($"Некорректный студент: {invalidStudent}");
+        Console.WriteLine($"Некорректный курс: {invalidCourse}");
+        Console.WriteLine($"Всего: {newRegistrations.Length}");
+        
+        Console.WriteLine($"\nПроцент валидных: {(double)valid / newRegistrations.Length * 100:F1}%");
+    }
+    
+    static void PrintInitialStatistics(DataSet ds)
+    {
+        DataTable registration = ds.Tables["Регистрация"];
+        Console.WriteLine($"Исходных регистраций: {registration.Rows.Count}");
+        Console.WriteLine($"Студентов: {ds.Tables["Студенты"].Rows.Count}");
+        Console.WriteLine($"Курсов: {ds.Tables["Курсы"].Rows.Count}");
+    }
+}
