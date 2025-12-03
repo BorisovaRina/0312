@@ -1,0 +1,255 @@
+using System;
+using System.Data;
+
+class Program
+{
+    static void Main()
+    {
+        try
+        {
+            DataSet ds = CreateDataSet();
+            FillTestData(ds);
+            CreateRelationship(ds);
+
+            Console.WriteLine("=== ЗАДАНИЕ 3: GetParentRows() - РОДИТЕЛЬСКИЕ СТРОКИ ===\n");
+
+            PrintRelationInfo(ds);
+            Console.WriteLine();
+
+            PrintHierarchicalStructure(ds);
+            Console.WriteLine();
+
+            Console.WriteLine("1. ТОВАРЫ С ИХ КАТЕГОРИЯМИ:");
+            Console.WriteLine("═══════════════════════════════════════");
+            PrintProductsWithCategories(ds);
+            Console.WriteLine();
+
+            Console.WriteLine("2. ПОИСК ТОВАРА ПО ID (ProductID=3):");
+            Console.WriteLine("═══════════════════════════════════════");
+            FindProductByID(ds, 3);
+            Console.WriteLine();
+
+            Console.WriteLine("3. ОТЧЁТ: ТОВАР → КАТЕГОРИЯ → ОПИСАНИЕ:");
+            Console.WriteLine("═══════════════════════════════════════");
+            PrintProductCategoryReport(ds);
+            Console.WriteLine();
+
+            Console.WriteLine("4. СИРОТЫ (ТОВАРЫ БЕЗ КАТЕГОРИЙ):");
+            Console.WriteLine("═══════════════════════════════════════");
+            FindOrphanedProducts(ds);
+            Console.WriteLine();
+
+            Console.WriteLine("5. НАРУШЕНИЯ ССЫЛОЧНОЙ ЦЕЛОСТНОСТИ:");
+            Console.WriteLine("═══════════════════════════════════════");
+            CheckReferentialIntegrity(ds);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"ОШИБКА: {ex.Message}");
+        }
+    }
+
+    static DataSet CreateDataSet()
+    {
+        DataSet ds = new DataSet("ShopDB");
+
+        DataTable categories = new DataTable("Категории");
+        categories.Columns.Add("CategoryID", typeof(int));
+        categories.Columns.Add("CategoryName", typeof(string));
+        categories.Columns.Add("Description", typeof(string));
+        categories.PrimaryKey = new DataColumn[] { categories.Columns["CategoryID"] };
+
+        DataTable products = new DataTable("Товары");
+        products.Columns.Add("ProductID", typeof(int));
+        products.Columns.Add("ProductName", typeof(string));
+        products.Columns.Add("Price", typeof(decimal));
+        products.Columns.Add("Quantity", typeof(int));
+        products.Columns.Add("CategoryID", typeof(int));
+        products.PrimaryKey = new DataColumn[] { products.Columns["ProductID"] };
+
+        ds.Tables.Add(categories);
+        ds.Tables.Add(products);
+
+        return ds;
+    }
+
+    static void FillTestData(DataSet ds)
+    {
+        DataTable categories = ds.Tables["Категории"];
+        DataTable products = ds.Tables["Товары"];
+
+        categories.Rows.Add(1, "Электроника", "Смартфоны, планшеты, гаджеты");
+        categories.Rows.Add(2, "Одежда", "Мужская и женская одежда");
+        categories.Rows.Add(3, "Книги", "Художественная и учебная литература");
+        categories.Rows.Add(4, "Бытовая техника", "Холодильники, стиральные машины");
+
+        products.Rows.Add(1, "iPhone 15 Pro", 129990m, 5, 1);
+        products.Rows.Add(2, "Samsung Galaxy S24", 89990m, 8, 1);
+        products.Rows.Add(3, "Xiaomi 14", 59990m, 12, 1);
+        products.Rows.Add(4, "iPad Air", 74990m, 3, 1);
+        products.Rows.Add(5, "Джинсы Levi's", 5990m, 20, 2);
+        products.Rows.Add(6, "Куртка Adidas", 12990m, 10, 2);
+        products.Rows.Add(7, "Футболка Nike", 2490m, 50, 2);
+        products.Rows.Add(8, "Война и мир", 1290m, 100, 3);
+        products.Rows.Add(9, "C# in Depth", 2890m, 25, 3);
+        products.Rows.Add(10, "Холодильник LG", 45990m, 2, 4);
+        products.Rows.Add(11, "Стиральная машина Bosch", 37990m, 3, 4);
+        products.Rows.Add(12, "Неизвестный товар", 999m, 1, 999);
+    }
+
+    static void CreateRelationship(DataSet ds)
+    {
+        DataTable categories = ds.Tables["Категории"];
+        DataTable products = ds.Tables["Товары"];
+
+        DataRelation relation = new DataRelation(
+            "FK_Categories_Products",
+            categories.Columns["CategoryID"],
+            products.Columns["CategoryID"],
+            true
+        );
+
+        ds.Relations.Add(relation);
+    }
+
+    static void PrintRelationInfo(DataSet ds)
+    {
+        DataRelation relation = ds.Relations["FK_Categories_Products"];
+
+        Console.WriteLine($"Имя: {relation.RelationName}");
+        Console.WriteLine($"Родитель: {relation.ParentTable.TableName}");
+        Console.WriteLine($"Дочерний: {relation.ChildTable.TableName}");
+        Console.WriteLine($"Колонки: {relation.ParentColumns[0].ColumnName} → {relation.ChildColumns[0].ColumnName}");
+    }
+
+    static void PrintHierarchicalStructure(DataSet ds)
+    {
+        DataTable categories = ds.Tables["Категории"];
+
+        foreach (DataRow categoryRow in categories.Rows)
+        {
+            string categoryName = (string)categoryRow["CategoryName"];
+            Console.WriteLine($"\n📁 {categoryName}:");
+
+            DataRow[] products = categoryRow.GetChildRows("FK_Categories_Products");
+
+            if (products.Length == 0)
+            {
+                Console.WriteLine("   └── Нет товаров");
+                continue;
+            }
+
+            foreach (DataRow product in products)
+            {
+                Console.WriteLine($"   • {product["ProductName"]} ({product["Price"]})");
+            }
+        }
+    }
+
+    static void PrintProductsWithCategories(DataSet ds)
+    {
+        DataTable products = ds.Tables["Товары"];
+
+        Console.WriteLine("Товар                 | Категория       | Цена");
+        Console.WriteLine("─────────────────────────────────────────────────");
+
+        foreach (DataRow product in products.Rows)
+        {
+            DataRow[] categories = product.GetParentRows("FK_Categories_Products");
+            string categoryName = categories.Length > 0 ? (string)categories[0]["CategoryName"] : "НЕ ИЗВЕСТНО";
+
+            Console.WriteLine($"{((string)product["ProductName"]):-20} | {categoryName,-15} | {((decimal)product["Price"]):N0}₽");
+        }
+    }
+
+    static void FindProductByID(DataSet ds, int productID)
+    {
+        DataTable products = ds.Tables["Товары"];
+        DataRow product = products.Rows.Find(productID);
+
+        if (product == null)
+        {
+            Console.WriteLine("Товар не найден");
+            return;
+        }
+
+        Console.WriteLine($"Товар: {product["ProductName"]}");
+        Console.WriteLine($"Цена: {((decimal)product["Price"]):N0}₽");
+
+        DataRow[] categories = product.GetParentRows("FK_Categories_Products");
+        if (categories.Length > 0)
+        {
+            DataRow category = categories[0];
+            Console.WriteLine($"Категория: {category["CategoryName"]}");
+            Console.WriteLine($"Описание: {category["Description"]}");
+        }
+        else
+        {
+            Console.WriteLine("Категория: НЕ НАЙДЕНА");
+        }
+    }
+
+    static void PrintProductCategoryReport(DataSet ds)
+    {
+        DataTable products = ds.Tables["Товары"];
+
+        Console.WriteLine("Товар                 | Категория       | Описание категории");
+        Console.WriteLine("─────────────────────────────────────────────────────────────");
+
+        foreach (DataRow product in products.Rows)
+        {
+            DataRow[] categories = product.GetParentRows("FK_Categories_Products");
+            string categoryName = categories.Length > 0 ? (string)categories[0]["CategoryName"] : "НЕ ИЗВЕСТНО";
+            string description = categories.Length > 0 ? (string)categories[0]["Description"] : "Отсутствует";
+
+            Console.WriteLine($"{((string)product["ProductName"]):-20} | {categoryName,-15} | {description}");
+        }
+    }
+
+    static void FindOrphanedProducts(DataSet ds)
+    {
+        DataTable products = ds.Tables["Товары"];
+        int orphans = 0;
+
+        Console.WriteLine("Сироты (товары без категорий):");
+        Console.WriteLine("───────────────────────────────");
+
+        foreach (DataRow product in products.Rows)
+        {
+            DataRow[] categories = product.GetParentRows("FK_Categories_Products");
+            if (categories.Length == 0)
+            {
+                Console.WriteLine($"• {product["ProductName"]} (ID: {product["ProductID"]}, CategoryID: {product["CategoryID"]})");
+                orphans++;
+            }
+        }
+
+        Console.WriteLine($"\nВсего сирот: {orphans}");
+    }
+
+    static void CheckReferentialIntegrity(DataSet ds)
+    {
+        DataTable categories = ds.Tables["Категории"];
+        DataTable products = ds.Tables["Товары"];
+
+        Console.WriteLine("Проверка ссылочной целостности:");
+        Console.WriteLine("───────────────────────────────");
+
+        int valid = 0, invalid = 0;
+
+        foreach (DataRow product in products.Rows)
+        {
+            int categoryID = (int)product["CategoryID"];
+            DataRow[] parentCategories = product.GetParentRows("FK_Categories_Products");
+
+            if (parentCategories.Length > 0)
+                valid++;
+            else
+                invalid++;
+        }
+
+        Console.WriteLine($"Корректных связей: {valid}");
+        Console.WriteLine($"Нарушений: {invalid}");
+        Console.WriteLine($"Процент корректности: {(double)valid / products.Rows.Count * 100:F1}%");
+    }
+}
