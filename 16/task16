@@ -1,0 +1,214 @@
+using System;
+using System.Data;
+using System.Collections.Generic;
+
+class Program
+{
+    static void Main()
+    {
+        try
+        {
+            DataSet ds = CreateDataSet();
+            FillTestData(ds);
+            CreateRelationshipWithConstraint(ds);
+            
+            Console.WriteLine("=== ЗАДАНИЕ 16: ПРОВЕРКА ССЫЛОЧНОЙ ЦЕЛОСТНОСТИ ===\n");
+            
+            Console.WriteLine("1. ИСХОДНЫЕ ДАННЫЕ:");
+            PrintCurrentState(ds);
+            Console.WriteLine();
+            
+            Console.WriteLine("2. ДОБАВЛЯЕМ НЕКОРРЕКТНЫЙ ТОВАР С НЕСУЩ CategoryID=999:");
+            AddInvalidProduct(ds);
+            Console.WriteLine();
+            
+            Console.WriteLine("3. ОТЧЁТ О НАРУШЕНИЯХ:");
+            CheckReferentialIntegrity(ds, autoFix: false);
+            Console.WriteLine();
+            
+            Console.WriteLine("4. АВТОИСПРАВЛЕНИЕ (УДАЛЕНИЕ СИРОТ И УСТАНОВКА NULL):");
+            CheckReferentialIntegrity(ds, autoFix: true);
+            Console.WriteLine();
+            
+            Console.WriteLine("5. СОСТОЯНИЕ ПОСЛЕ ИСПРАВЛЕНИЯ:");
+            PrintCurrentState(ds);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"ОШИБКА: {ex.Message}");
+        }
+    }
+
+    static DataSet CreateDataSet()
+    {
+        DataSet ds = new DataSet("ShopDB");
+        
+        DataTable categories = new DataTable("Категории");
+        categories.Columns.Add("CategoryID", typeof(int));
+        categories.Columns.Add("CategoryName", typeof(string));
+        categories.PrimaryKey = new DataColumn[] { categories.Columns["CategoryID"] };
+        
+        DataTable products = new DataTable("Товары");
+        products.Columns.Add("ProductID", typeof(int));
+        products.Columns.Add("ProductName", typeof(string));
+        products.Columns.Add("Price", typeof(decimal));
+        products.Columns.Add("CategoryID", typeof(int));
+        products.PrimaryKey = new DataColumn[] { products.Columns["ProductID"] };
+        
+        ds.Tables.Add(categories);
+        ds.Tables.Add(products);
+        
+        return ds;
+    }
+
+    static void FillTestData(DataSet ds)
+    {
+        DataTable categories = ds.Tables["Категории"];
+        DataTable products = ds.Tables["Товары"];
+        
+        categories.Rows.Add(1, "Электроника");
+        categories.Rows.Add(2, "Одежда");
+        categories.Rows.Add(3, "Книги");
+        
+        products.Rows.Add(1, "iPhone 15", 129990m, 1);
+        products.Rows.Add(2, "Samsung S24", 89990m, 1);
+        products.Rows.Add(3, "Джинсы Levi's", 5990m, 2);
+        products.Rows.Add(4, "Война и мир", 1290m, 3);
+    }
+
+    static void CreateRelationshipWithConstraint(DataSet ds)
+    {
+        DataTable categories = ds.Tables["Категории"];
+        DataTable products = ds.Tables["Товары"];
+        
+        ForeignKeyConstraint fk = new ForeignKeyConstraint(
+            "FK_Categories_Products",
+            categories.Columns["CategoryID"],
+            products.Columns["CategoryID"]
+        );
+        fk.DeleteRule = Rule.None;
+        fk.UpdateRule = Rule.None;
+        fk.AcceptRejectRule = AcceptRejectRule.None;
+        products.Constraints.Add(fk);
+        
+        DataRelation rel = new DataRelation(
+            "Rel_Categories_Products",
+            categories.Columns["CategoryID"],
+            products.Columns["CategoryID"]
+        );
+        ds.Relations.Add(rel);
+    }
+
+    static void AddInvalidProduct(DataSet ds)
+    {
+        DataTable products = ds.Tables["Товары"];
+        
+        ds.EnforceConstraints = false;
+        products.Rows.Add(5, "Несвязанный товар", 999m, 999); // нет такой категории
+        products.Rows.Add(6, "С NULL категорией", 500m, DBNull.Value);
+        ds.EnforceConstraints = true;
+        
+        Console.WriteLine("Добавлены 2 товара: с CategoryID=999 и CategoryID=NULL (EnforceConstraints временно отключён).");
+    }
+
+    static void CheckReferentialIntegrity(DataSet ds, bool autoFix)
+    {
+        DataTable categories = ds.Tables["Категории"];
+        DataTable products = ds.Tables["Товары"];
+        DataRelation rel = ds.Relations["Rel_Categories_Products"];
+        
+        List<DataRow> orphaned = new List<DataRow>();
+        List<DataRow> nullFk = new List<DataRow>();
+        
+        foreach (DataRow product in products.Rows)
+        {
+            if (product.RowState == DataRowState.Deleted) continue;
+            
+            if (product.IsNull("CategoryID"))
+            {
+                nullFk.Add(product);
+                continue;
+            }
+            
+            int catId = (int)product["CategoryID"];
+            DataRow parent = categories.Rows.Find(catId);
+            if (parent == null)
+                orphaned.Add(product);
+        }
+        
+        Console.WriteLine("ОТЧЁТ ПРОВЕРКИ ЦЕЛОСТНОСТИ:");
+        Console.WriteLine("────────────────────────────────────────");
+        Console.WriteLine($"Всего товаров: {products.Rows.Count}");
+        Console.WriteLine($"Сирот (нет родительской категории): {orphaned.Count}");
+        Console.WriteLine($"NULL в CategoryID: {nullFk.Count}");
+        
+        if (orphaned.Count > 0)
+        {
+            Console.WriteLine("\nСИРОТЫ:");
+            Console.WriteLine("ID  | Товар               | CategoryID");
+            Console.WriteLine("─────────────────────────────────");
+            foreach (DataRow p in orphaned)
+            {
+                Console.WriteLine($"{p["ProductID"],3} | {p["ProductName"],-18} | {p["CategoryID"]}");
+            }
+        }
+        
+        if (nullFk.Count > 0)
+        {
+            Console.WriteLine("\nТОВАРЫ С NULL CategoryID:");
+            Console.WriteLine("ID  | Товар               | CategoryID");
+            Console.WriteLine("─────────────────────────────────");
+            foreach (DataRow p in nullFk)
+            {
+                Console.WriteLine($"{p["ProductID"],3} | {p["ProductName"],-18} | NULL");
+            }
+        }
+        
+        if (autoFix)
+        {
+            Console.WriteLine("\nАВТОИСПРАВЛЕНИЕ:");
+            Console.WriteLine("─────────────────────────────────");
+            
+            foreach (DataRow p in orphaned)
+            {
+                Console.WriteLine($"Удаляем сироту: {p["ProductID"]} - {p["ProductName"]}");
+                p.Delete();
+            }
+            
+            foreach (DataRow p in nullFk)
+            {
+                Console.WriteLine($"Оставляем товар с NULL CategoryID: {p["ProductID"]} - {p["ProductName"]}");
+            }
+            
+            Console.WriteLine("Исправление выполнено (но AcceptChanges ещё не вызывался).");
+        }
+        else
+        {
+            Console.WriteLine("\nНАРУШЕНИЯ ОБНАРУЖЕНЫ, СОХРАНЕНИЕ НЕ РЕКОМЕНДУЕТСЯ.");
+        }
+    }
+
+    static void PrintCurrentState(DataSet ds)
+    {
+        DataTable categories = ds.Tables["Категории"];
+        DataTable products = ds.Tables["Товары"];
+        
+        Console.WriteLine("КАТЕГОРИИ:");
+        Console.WriteLine("ID | Имя");
+        Console.WriteLine("──────────────");
+        foreach (DataRow c in categories.Rows)
+        {
+            Console.WriteLine($"{c["CategoryID"],2} | {c["CategoryName"]}");
+        }
+        
+        Console.WriteLine("\nТОВАРЫ:");
+        Console.WriteLine("ID | Товар               | CategoryID");
+        Console.WriteLine("─────────────────────────────────");
+        foreach (DataRow p in products.Rows)
+        {
+            if (p.RowState == DataRowState.Deleted) continue;
+            string cat = p.IsNull("CategoryID") ? "NULL" : p["CategoryID"].ToString();
+            Console.WriteLine($"{p["ProductID"],2} | {p["ProductName"],-18} | {cat}");
+        }
+    }
+}
