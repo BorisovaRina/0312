@@ -1,0 +1,275 @@
+using System;
+using System.Data;
+using System.IO;
+using System.Xml;
+using System.Collections.Generic;
+using Newtonsoft.Json; 
+class Program
+{
+    static void Main()
+    {
+        try
+        {
+            DataSet ds = CreateHierarchyDataSet();
+            FillTestData(ds);
+            CreateRelationships(ds);
+            
+            Console.WriteLine("=== ЗАДАНИЕ 18: ЭКСПОРТ ИЕРАРХИЧЕСКИХ ДАННЫХ ===\n");
+            
+            Console.WriteLine("1. ИСХОДНАЯ ИЕРАРХИЯ:");
+            PrintHierarchyConsole(ds);
+            Console.WriteLine();
+            
+            Console.WriteLine("2. ЭКСПОРТ В XML (DataSet.WriteXml):");
+            ExportToXml(ds);
+            Console.WriteLine();
+            
+            Console.WriteLine("3. РЕКУРСИВНЫЙ ЭКСПОРТ В JSON:");
+            ExportRecursiveJson(ds);
+            Console.WriteLine();
+            
+            Console.WriteLine("4. CSV С ИЕРАРХИЕЙ:");
+            ExportToCsvHierarchy(ds);
+            Console.WriteLine();
+            
+            Console.WriteLine("5. ИМПОРТ ИЗ XML:");
+            ImportFromXmlAndVerify(ds);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"ОШИБКА: {ex.Message}");
+        }
+    }
+    
+    static DataSet CreateHierarchyDataSet()
+    {
+        DataSet ds = new DataSet("CompanyHierarchy");
+        
+        // Отделы
+        DataTable departments = new DataTable("Отделы");
+        departments.Columns.Add("DepartmentID", typeof(int));
+        departments.Columns.Add("DepartmentName", typeof(string));
+        departments.PrimaryKey = new DataColumn[] { departments.Columns["DepartmentID"] };
+        
+        // Сотрудники
+        DataTable employees = new DataTable("Сотрудники");
+        employees.Columns.Add("EmployeeID", typeof(int));
+        employees.Columns.Add("EmployeeName", typeof(string));
+        employees.Columns.Add("Position", typeof(string));
+        employees.Columns.Add("Salary", typeof(decimal));
+        employees.Columns.Add("DepartmentID", typeof(int));
+        employees.PrimaryKey = new DataColumn[] { employees.Columns["EmployeeID"] };
+        
+        // Проекты
+        DataTable projects = new DataTable("Проекты");
+        projects.Columns.Add("ProjectID", typeof(int));
+        projects.Columns.Add("ProjectName", typeof(string));
+        projects.Columns.Add("EmployeeID", typeof(int)); // Руководитель проекта
+        projects.PrimaryKey = new DataColumn[] { projects.Columns["ProjectID"] };
+        
+        ds.Tables.Add(departments);
+        ds.Tables.Add(employees);
+        ds.Tables.Add(projects);
+        
+        return ds;
+    }
+    
+    static void FillTestData(DataSet ds)
+    {
+        DataTable depts = ds.Tables["Отделы"];
+        DataTable emps = ds.Tables["Сотрудники"];
+        DataTable projs = ds.Tables["Проекты"];
+        
+        // Отделы
+        depts.Rows.Add(1, "IT Отдел");
+        depts.Rows.Add(2, "HR Отдел");
+        depts.Rows.Add(3, "Продажи");
+        
+        // Сотрудники
+        emps.Rows.Add(101, "Иван Петров", "Lead Developer", 250000m, 1);
+        emps.Rows.Add(102, "Мария Сидорова", "HR Manager", 180000m, 2);
+        emps.Rows.Add(103, "Алексей Новиков", "Senior Developer", 220000m, 1);
+        emps.Rows.Add(104, "Елена Козлова", "Sales Manager", 200000m, 3);
+        emps.Rows.Add(105, "Дмитрий Волков", "Junior Developer", 120000m, 1);
+        
+        // Проекты
+        projs.Rows.Add(1, "ERP Система", 101);
+        projs.Rows.Add(2, "HR Portal", 102);
+        projs.Rows.Add(3, "CRM Модуль", 103);
+        projs.Rows.Add(4, "Мобильное приложение", 105);
+    }
+    
+    static void CreateRelationships(DataSet ds)
+    {
+        DataTable depts = ds.Tables["Отделы"];
+        DataTable emps = ds.Tables["Сотрудники"];
+        DataTable projs = ds.Tables["Проекты"];
+        
+        // Отделы → Сотрудники
+        DataRelation rel1 = new DataRelation("Rel_Departments_Employees",
+            depts.Columns["DepartmentID"], emps.Columns["DepartmentID"]);
+        ds.Relations.Add(rel1);
+        
+        // Сотрудники → Проекты
+        DataRelation rel2 = new DataRelation("Rel_Employees_Projects",
+            emps.Columns["EmployeeID"], projs.Columns["EmployeeID"]);
+        ds.Relations.Add(rel2);
+    }
+    
+    static void PrintHierarchyConsole(DataSet ds)
+    {
+        DataTable depts = ds.Tables["Отделы"];
+        foreach (DataRow dept in depts.Rows)
+        {
+            Console.WriteLine($"📁 {dept["DepartmentName"]} (ID:{dept["DepartmentID"]})");
+            
+            DataRow[] emps = dept.GetChildRows("Rel_Departments_Employees");
+            foreach (DataRow emp in emps)
+            {
+                Console.WriteLine($"  👤 {emp["EmployeeName"]} - {emp["Position"]} ({emp["Salary"]:N0}₽)");
+                
+                DataRow[] projs = emp.GetChildRows("Rel_Employees_Projects");
+                foreach (DataRow proj in projs)
+                {
+                    Console.WriteLine($"    📋 {proj["ProjectName"]}");
+                }
+            }
+            Console.WriteLine();
+        }
+    }
+    
+    static void ExportToXml(DataSet ds)
+    {
+        string xmlFile = "CompanyHierarchy.xml";
+        ds.WriteXml(xmlFile, XmlWriteMode.WriteSchema);
+        Console.WriteLine($"✓ DataSet.WriteXml() → {xmlFile} (схема + данные + отношения)");
+        
+        // Показываем начало XML
+        Console.WriteLine("Первые строки XML:");
+        string[] xmlLines = File.ReadAllLines(xmlFile);
+        for (int i = 0; i < Math.Min(10, xmlLines.Length); i++)
+        {
+            Console.WriteLine($"  {xmlLines[i]}");
+        }
+        if (xmlLines.Length > 10) Console.WriteLine($"  ... {xmlLines.Length - 10} строк...");
+    }
+    
+    static void ExportRecursiveJson(DataSet ds)
+    {
+        var hierarchy = new List<object>();
+        DataTable depts = ds.Tables["Отделы"];
+        
+        foreach (DataRow dept in depts.Rows)
+        {
+            var departmentData = new Dictionary<string, object>
+            {
+                ["DepartmentID"] = dept["DepartmentID"],
+                ["DepartmentName"] = dept["DepartmentName"],
+                ["Employees"] = GetEmployeeHierarchy(dept, ds)
+            };
+            hierarchy.Add(departmentData);
+        }
+        
+        string json = JsonConvert.SerializeObject(hierarchy, Formatting.Indented);
+        File.WriteAllText("CompanyHierarchy.json", json);
+        Console.WriteLine("✓ Рекурсивный JSON → CompanyHierarchy.json");
+        Console.WriteLine("Структура JSON:");
+        Console.WriteLine(json.Substring(0, Math.Min(300, json.Length)));
+        if (json.Length > 300) Console.WriteLine("...");
+    }
+    
+    static object[] GetEmployeeHierarchy(DataRow deptRow, DataSet ds)
+    {
+        var employees = new List<object>();
+        DataRow[] emps = deptRow.GetChildRows("Rel_Departments_Employees");
+        
+        foreach (DataRow emp in emps)
+        {
+            var employeeData = new Dictionary<string, object>
+            {
+                ["EmployeeID"] = emp["EmployeeID"],
+                ["EmployeeName"] = emp["EmployeeName"],
+                ["Position"] = emp["Position"],
+                ["Salary"] = emp["Salary"],
+                ["Projects"] = GetProjectsForEmployee(emp, ds)
+            };
+            employees.Add(employeeData);
+        }
+        return employees.ToArray();
+    }
+    
+    static object[] GetProjectsForEmployee(DataRow empRow, DataSet ds)
+    {
+        DataRow[] projs = empRow.GetChildRows("Rel_Employees_Projects");
+        var projects = new List<object>();
+        
+        foreach (DataRow proj in projs)
+        {
+            projects.Add(new Dictionary<string, object>
+            {
+                ["ProjectID"] = proj["ProjectID"],
+                ["ProjectName"] = proj["ProjectName"]
+            });
+        }
+        return projects.ToArray();
+    }
+    
+    static void ExportToCsvHierarchy(DataSet ds)
+    {
+        using (var writer = new StreamWriter("CompanyHierarchy.csv"))
+        {
+            writer.WriteLine("Уровень,DepartmentID,DepartmentName,EmployeeID,EmployeeName,Position,Salary,ProjectID,ProjectName");
+            
+            DataTable depts = ds.Tables["Отделы"];
+            foreach (DataRow dept in depts.Rows)
+            {
+                writer.WriteLine($"1,{dept["DepartmentID"]},{dept["DepartmentName"]},,,,\"\",");
+                
+                DataRow[] emps = dept.GetChildRows("Rel_Departments_Employees");
+                foreach (DataRow emp in emps)
+                {
+                    writer.WriteLine($"2,,,{emp["EmployeeID"]},{emp["EmployeeName"]},{emp["Position"]},{emp["Salary"]},,\"\",");
+                    
+                    DataRow[] projs = emp.GetChildRows("Rel_Employees_Projects");
+                    foreach (DataRow proj in projs)
+                    {
+                        writer.WriteLine($"3,,,,,,,{proj["ProjectID"]},{proj["ProjectName"]}");
+                    }
+                }
+            }
+        }
+        Console.WriteLine("✓ CSV с иерархией → CompanyHierarchy.csv");
+    }
+    
+    static void ImportFromXmlAndVerify(DataSet dsOriginal)
+    {
+        string xmlFile = "CompanyHierarchy.xml";
+        DataSet dsImported = new DataSet();
+        
+        try
+        {
+            dsImported.ReadXml(xmlFile, XmlReadMode.ReadSchema);
+            Console.WriteLine($"✓ Импорт из XML: {dsImported.Tables.Count} таблиц");
+            
+            Console.WriteLine("Проверка импорта:");
+            Console.WriteLine($"  Отделы: {dsImported.Tables["Отделы"]?.Rows.Count ?? 0}");
+            Console.WriteLine($"  Сотрудники: {dsImported.Tables["Сотрудники"]?.Rows.Count ?? 0}");
+            Console.WriteLine($"  Проекты: {dsImported.Tables["Проекты"]?.Rows.Count ?? 0}");
+            
+            // Проверка отношений
+            int relCount = 0;
+            foreach (DataRelation rel in dsImported.Relations)
+            {
+                Console.WriteLine($"  Отношение: {rel.RelationName}");
+                relCount++;
+            }
+            Console.WriteLine($"  Отношений: {relCount}");
+            
+            Console.WriteLine("✓ Импорт успешен! Отношения и структура сохранены.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"ОШИБКА импорта: {ex.Message}");
+        }
+    }
+}
