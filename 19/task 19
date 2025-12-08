@@ -1,0 +1,326 @@
+using System;
+using System.Data;
+using System.Collections.Generic;
+using System.Linq;
+
+class Program
+{
+    static void Main()
+    {
+        try
+        {
+            DataSet ds = CreateUniversityDataSet();
+            FillTestData(ds);
+            CreateUniversityRelationships(ds);
+            
+            Console.WriteLine("=== ЗАДАНИЕ 19: УПРАВЛЕНИЕ ОБРАЗОВАТЕЛЬНЫМ УЧРЕЖДЕНИЕМ ===\n");
+            
+            Console.WriteLine("1. ИСХОДНАЯ СТРУКТУРА:");
+            PrintUniversityHierarchy(ds);
+            Console.WriteLine();
+            
+            Console.WriteLine("2. ОПЕРАЦИИ:");
+            PerformUniversityOperations(ds);
+            Console.WriteLine();
+            
+            Console.WriteLine("3. ОТЧЁТЫ:");
+            GenerateUniversityReports(ds);
+            Console.WriteLine();
+            
+            Console.WriteLine("4. ПРОВЕРКА ЦЕЛОСТНОСТИ ПЕРЕД СОХРАНЕНИЕМ:");
+            CheckUniversityIntegrity(ds);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"ОШИБКА: {ex.Message}");
+        }
+    }
+    
+    static DataSet CreateUniversityDataSet()
+    {
+        DataSet ds = new DataSet("UniversityDB");
+        
+        // Факультеты
+        DataTable faculties = new DataTable("Факультеты");
+        faculties.Columns.Add("FacultyID", typeof(int));
+        faculties.Columns.Add("FacultyName", typeof(string));
+        faculties.PrimaryKey = new DataColumn[] { faculties.Columns["FacultyID"] };
+        
+        // Специальности
+        DataTable specialties = new DataTable("Специальности");
+        specialties.Columns.Add("SpecialtyID", typeof(int));
+        specialties.Columns.Add("SpecialtyName", typeof(string));
+        specialties.Columns.Add("FacultyID", typeof(int));
+        specialties.PrimaryKey = new DataColumn[] { specialties.Columns["SpecialtyID"] };
+        
+        // Студенты
+        DataTable students = new DataTable("Студенты");
+        students.Columns.Add("StudentID", typeof(int));
+        students.Columns.Add("StudentName", typeof(string));
+        students.Columns.Add("SpecialtyID", typeof(int));
+        students.PrimaryKey = new DataColumn[] { students.Columns["StudentID"] };
+        
+        // Предметы
+        DataTable subjects = new DataTable("Предметы");
+        subjects.Columns.Add("SubjectID", typeof(int));
+        subjects.Columns.Add("SubjectName", typeof(string));
+        subjects.PrimaryKey = new DataColumn[] { subjects.Columns["SubjectID"] };
+        
+        // Оценки
+        DataTable grades = new DataTable("Оценки");
+        grades.Columns.Add("GradeID", typeof(int));
+        grades.Columns.Add("StudentID", typeof(int));
+        grades.Columns.Add("SubjectID", typeof(int));
+        grades.Columns.Add("Grade", typeof(double));
+        grades.Columns.Add("Date", typeof(DateTime));
+        grades.PrimaryKey = new DataColumn[] { grades.Columns["GradeID"] };
+        
+        ds.Tables.AddRange(new DataTable[] { faculties, specialties, students, subjects, grades });
+        return ds;
+    }
+    
+    static void FillTestData(DataSet ds)
+    {
+        DataTable faculties = ds.Tables["Факультеты"];
+        DataTable specialties = ds.Tables["Специальности"];
+        DataTable students = ds.Tables["Студенты"];
+        DataTable subjects = ds.Tables["Предметы"];
+        DataTable grades = ds.Tables["Оценки"];
+        
+        // Факультеты
+        faculties.Rows.Add(1, "Информатика");
+        faculties.Rows.Add(2, "Экономика");
+        
+        // Специальности
+        specialties.Rows.Add(101, "Программная инженерия", 1);
+        specialties.Rows.Add(102, "Информационная безопасность", 1);
+        specialties.Rows.Add(201, "Финансы", 2);
+        
+        // Студенты
+        students.Rows.Add(1001, "Иван Петров", 101);
+        students.Rows.Add(1002, "Мария Сидорова", 101);
+        students.Rows.Add(1003, "Алексей Новиков", 102);
+        students.Rows.Add(1004, "Елена Козлова", 201);
+        
+        // Предметы
+        subjects.Rows.Add(1, "C# Programming");
+        subjects.Rows.Add(2, "Databases");
+        subjects.Rows.Add(3, "Web Development");
+        subjects.Rows.Add(4, "Algorithms");
+        
+        // Оценки
+        grades.Rows.Add(1, 1001, 1, 4.5, new DateTime(2024, 12, 1));
+        grades.Rows.Add(2, 1001, 2, 4.2, new DateTime(2024, 12, 5));
+        grades.Rows.Add(3, 1001, 3, 4.8, new DateTime(2024, 12, 10));
+        grades.Rows.Add(4, 1002, 1, 4.7, new DateTime(2024, 12, 1));
+        grades.Rows.Add(5, 1002, 4, 3.9, new DateTime(2024, 12, 8));
+        grades.Rows.Add(6, 1003, 2, 4.0, new DateTime(2024, 12, 5));
+        grades.Rows.Add(7, 1003, 3, 4.3, new DateTime(2024, 12, 10));
+        grades.Rows.Add(8, 1004, 1, 3.8, new DateTime(2024, 12, 1));
+        grades.Rows.Add(9, 1004, 4, 4.1, new DateTime(2024, 12, 8));
+    }
+    
+    static void CreateUniversityRelationships(DataSet ds)
+    {
+        DataTable faculties = ds.Tables["Факультеты"];
+        DataTable specialties = ds.Tables["Специальности"];
+        DataTable students = ds.Tables["Студенты"];
+        DataTable subjects = ds.Tables["Предметы"];
+        DataTable grades = ds.Tables["Оценки"];
+        
+        // Факультеты → Специальности (Cascade Delete/Update)
+        ForeignKeyConstraint fk1 = new ForeignKeyConstraint("FK_Specialties_Faculties",
+            faculties.Columns["FacultyID"], specialties.Columns["FacultyID"]);
+        fk1.DeleteRule = Rule.Cascade;
+        fk1.UpdateRule = Rule.Cascade;
+        specialties.Constraints.Add(fk1);
+        ds.Relations.Add(new DataRelation("Rel_Faculties_Specialties",
+            faculties.Columns["FacultyID"], specialties.Columns["FacultyID"]));
+        
+        // Специальности → Студенты (SetNull Delete, Cascade Update)
+        ForeignKeyConstraint fk2 = new ForeignKeyConstraint("FK_Students_Specialties",
+            specialties.Columns["SpecialtyID"], students.Columns["SpecialtyID"]);
+        fk2.DeleteRule = Rule.SetNull;
+        fk2.UpdateRule = Rule.Cascade;
+        students.Constraints.Add(fk2);
+        ds.Relations.Add(new DataRelation("Rel_Specialties_Students",
+            specialties.Columns["SpecialtyID"], students.Columns["SpecialtyID"]));
+        
+        // Студенты → Оценки
+        ForeignKeyConstraint fk3 = new ForeignKeyConstraint("FK_Grades_Students",
+            students.Columns["StudentID"], grades.Columns["StudentID"]);
+        grades.Constraints.Add(fk3);
+        ds.Relations.Add(new DataRelation("Rel_Students_Grades",
+            students.Columns["StudentID"], grades.Columns["StudentID"]));
+        
+        // Предметы → Оценки
+        ForeignKeyConstraint fk4 = new ForeignKeyConstraint("FK_Grades_Subjects",
+            subjects.Columns["SubjectID"], grades.Columns["SubjectID"]);
+        grades.Constraints.Add(fk4);
+        ds.Relations.Add(new DataRelation("Rel_Subjects_Grades",
+            subjects.Columns["SubjectID"], grades.Columns["SubjectID"]));
+    }
+    
+    static void PerformUniversityOperations(DataSet ds)
+    {
+        Console.WriteLine("=== ОПЕРАЦИИ ===");
+        
+        // Добавление новой специальности
+        DataTable specialties = ds.Tables["Специальности"];
+        specialties.Rows.Add(103, "ИИ и ML", 1);
+        Console.WriteLine("✓ Добавлена специальность 'ИИ и ML'");
+        
+        // Добавление студента
+        DataTable students = ds.Tables["Студенты"];
+        students.Rows.Add(1005, "Новый студент", 103);
+        Console.WriteLine("✓ Добавлен студент на новую специальность");
+        
+        // Каскадное удаление факультета (тест)
+        Console.WriteLine("\nКАСКАДНОЕ УДАЛЕНИЕ ФАКУЛЬТЕТА #2 (Экономика):");
+        DataTable faculties = ds.Tables["Факультеты"];
+        DataRow faculty2 = faculties.Rows.Find(2);
+        faculty2.Delete();
+        Console.WriteLine("✓ Факультет удалён → каскадно удалена специальность 'Финансы'");
+        Console.WriteLine("  Студент Елена Козлова теперь без специальности (SetNull)");
+    }
+    
+    static void PrintUniversityHierarchy(DataSet ds)
+    {
+        DataTable faculties = ds.Tables["Факультеты"];
+        foreach (DataRow faculty in faculties.Rows)
+        {
+            Console.WriteLine($"📚 {faculty["FacultyName"]} (ID:{faculty["FacultyID"]})");
+            
+            DataRow[] specs = faculty.GetChildRows("Rel_Faculties_Specialties");
+            foreach (DataRow spec in specs)
+            {
+                Console.WriteLine($"  ├─ {spec["SpecialtyName"]} (ID:{spec["SpecialtyID"]})");
+                
+                DataRow[] studs = spec.GetChildRows("Rel_Specialties_Students");
+                foreach (DataRow stud in studs)
+                {
+                    Console.WriteLine($"  │  └─ {stud["StudentName"]} (ID:{stud["StudentID"]})");
+                    
+                    DataRow[] studGrades = stud.GetChildRows("Rel_Students_Grades");
+                    Console.WriteLine($"  │     └─ Оценок: {studGrades.Length}");
+                }
+            }
+        }
+    }
+    
+    static void GenerateUniversityReports(DataSet ds)
+    {
+        Console.WriteLine("\n=== ОТЧЁТЫ ===");
+        
+        Console.WriteLine("\n1. ПО ФАКУЛЬТЕТАМ:");
+        PrintFacultyReport(ds);
+        
+        Console.WriteLine("\n2. ПО СТУДЕНТАМ (средний балл):");
+        PrintStudentReport(ds);
+        
+        Console.WriteLine("\n3. СОСТОЯНИЕ ИЗМЕНЕНИЙ:");
+        PrintChangeReport(ds);
+    }
+    
+    static void PrintFacultyReport(DataSet ds)
+    {
+        DataTable faculties = ds.Tables["Факультеты"];
+        Console.WriteLine("Факультет         | Специальностей | Студентов | Ср.балл");
+        Console.WriteLine("────────────────────────────────────────────────────");
+        
+        foreach (DataRow faculty in faculties.Rows)
+        {
+            DataRow[] specs = faculty.GetChildRows("Rel_Faculties_Specialties");
+            int specCount = specs.Length;
+            int studentCount = 0;
+            double totalAvg = 0;
+            
+            foreach (DataRow spec in specs)
+            {
+                DataRow[] studs = spec.GetChildRows("Rel_Specialties_Students");
+                studentCount += studs.Length;
+                
+                foreach (DataRow stud in studs)
+                {
+                    double studAvg = CalculateStudentAverage(ds, (int)stud["StudentID"]);
+                    totalAvg += studAvg;
+                }
+            }
+            
+            double facultyAvg = studentCount > 0 ? totalAvg / studentCount : 0;
+            Console.WriteLine($"{faculty["FacultyName"],-17} | {specCount,14} | {studentCount,9} | {facultyAvg,7:F2}");
+        }
+    }
+    
+    static void PrintStudentReport(DataSet ds)
+    {
+        DataTable students = ds.Tables["Студенты"];
+        Console.WriteLine("Студент             | Специальность    | Ср.балл | Оценок");
+        Console.WriteLine("────────────────────────────────────────────────────");
+        
+        foreach (DataRow student in students.Rows)
+        {
+            double avg = CalculateStudentAverage(ds, (int)student["StudentID"]);
+            DataRow[] grades = student.GetChildRows("Rel_Students_Grades");
+            
+            DataTable specialties = ds.Tables["Специальности"];
+            DataRow[] specRows = specialties.Select($"SpecialtyID = {(int)student["SpecialtyID"]}");
+            string specialtyName = specRows.Length > 0 ? (string)specRows[0]["SpecialtyName"] : "Без специальности";
+            
+            Console.WriteLine($"{student["StudentName"],-20} | {specialtyName,-16} | {avg,7:F2} | {grades.Length,7}");
+        }
+    }
+    
+    static double CalculateStudentAverage(DataSet ds, int studentID)
+    {
+        DataTable grades = ds.Tables["Оценки"];
+        DataRow[] studentGrades = grades.Select($"StudentID = {studentID}");
+        
+        if (studentGrades.Length == 0) return 0;
+        
+        double sum = 0;
+        foreach (DataRow grade in studentGrades)
+            sum += (double)grade["Grade"];
+        
+        return sum / studentGrades.Length;
+    }
+    
+    static void PrintChangeReport(DataSet ds)
+    {
+        Console.WriteLine("СОСТОЯНИЕ ИЗМЕНЕНИЙ:");
+        Console.WriteLine("Таблица       | Added | Modified | Deleted");
+        Console.WriteLine("───────────────────────────────────────");
+        
+        foreach (DataTable table in ds.Tables)
+        {
+            int added = table.Select("", "", DataViewRowState.Added).Length;
+            int modified = table.Select("", "", DataViewRowState.ModifiedCurrent).Length;
+            int deleted = table.Select("", "", DataViewRowState.Deleted).Length;
+            
+            Console.WriteLine($"{table.TableName,-12} | {added,5} | {modified,8} | {deleted,7}");
+        }
+    }
+    
+    static void CheckUniversityIntegrity(DataSet ds)
+    {
+        Console.WriteLine("\nПРОВЕРКА ССЫЛОЧНОЙ ЦЕЛОСТНОСТИ:");
+        Console.WriteLine("═══════════════════════════════════════");
+        
+        DataTable students = ds.Tables["Студенты"];
+        DataTable specialties = ds.Tables["Специальности"];
+        int orphans = 0;
+        
+        foreach (DataRow student in students.Rows)
+        {
+            if (student["SpecialtyID"] != DBNull.Value)
+            {
+                int specID = (int)student["SpecialtyID"];
+                DataRow spec = specialties.Rows.Find(specID);
+                if (spec == null) orphans++;
+            }
+        }
+        
+        Console.WriteLine($"Студентов без специальности: {orphans}");
+        Console.WriteLine(orphans == 0 ? "✓ ЦЕЛОСТНОСТЬ ОК" : "⚠️ НАРУШЕНИЯ ЦЕЛОСТНОСТИ");
+    }
+}
