@@ -1,0 +1,207 @@
+using System;
+using System.Data;
+
+class Program
+{
+    static void Main()
+    {
+        try
+        {
+            DataSet ds = CreateDataSet();
+            FillTestData(ds);
+            CreateRelationship(ds);
+            
+            Console.WriteLine("=== ЗАДАНИЕ 17: DataRelation + DataView ФИЛЬТРАЦИЯ ===\n");
+            
+            Console.WriteLine("1. ВСЕ ЗАКАЗЫ:");
+            PrintAllOrders(ds);
+            Console.WriteLine();
+            
+            Console.WriteLine("2. ФИЛЬТР: ЗАКАЗЫ КЛИЕНТА ID=1:");
+            PrintFilteredOrders(ds, "customerFilter");
+            Console.WriteLine();
+            
+            Console.WriteLine("3. ФИЛЬТР: ЗАКАЗЫ ПОСЛЕ 2024-01-20:");
+            PrintFilteredOrders(ds, "dateFilter");
+            Console.WriteLine();
+            
+            Console.WriteLine("4. ФИЛЬТР: ЗАКАЗЫ > 10000₽:");
+            PrintFilteredOrders(ds, "amountFilter");
+            Console.WriteLine();
+            
+            Console.WriteLine("5. КОМБИНИРОВАННЫЙ ФИЛЬТР:");
+            PrintFilteredOrders(ds, "combinedFilter");
+            Console.WriteLine();
+            
+            Console.WriteLine("6. GetChildRows() ДЛЯ КЛИЕНТА ID=2:");
+            PrintCustomerOrdersViaRelation(ds, 2);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"ОШИБКА: {ex.Message}");
+        }
+    }
+    
+    static DataSet CreateDataSet()
+    {
+        DataSet ds = new DataSet("OrdersDB");
+        
+        DataTable customers = new DataTable("Заказчики");
+        customers.Columns.Add("CustomerID", typeof(int));
+        customers.Columns.Add("CustomerName", typeof(string));
+        customers.Columns.Add("Email", typeof(string));
+        customers.PrimaryKey = new DataColumn[] { customers.Columns["CustomerID"] };
+        
+        DataTable orders = new DataTable("Заказы");
+        orders.Columns.Add("OrderID", typeof(int));
+        orders.Columns.Add("OrderDate", typeof(DateTime));
+        orders.Columns.Add("CustomerID", typeof(int));
+        orders.Columns.Add("Total", typeof(decimal));
+        orders.PrimaryKey = new DataColumn[] { orders.Columns["OrderID"] };
+        
+        ds.Tables.Add(customers);
+        ds.Tables.Add(orders);
+        
+        return ds;
+    }
+    
+    static void FillTestData(DataSet ds)
+    {
+        DataTable customers = ds.Tables["Заказчики"];
+        DataTable orders = ds.Tables["Заказы"];
+        
+        customers.Rows.Add(1, "Иван Петров", "ivan@example.com");
+        customers.Rows.Add(2, "Мария Сидорова", "maria@example.com");
+        customers.Rows.Add(3, "Алексей Новиков", "alex@example.com");
+        
+        orders.Rows.Add(1, new DateTime(2024, 1, 10), 1, 12500m);
+        orders.Rows.Add(2, new DateTime(2024, 1, 15), 1, 8500m);
+        orders.Rows.Add(3, new DateTime(2024, 1, 20), 2, 21000m);
+        orders.Rows.Add(4, new DateTime(2024, 1, 25), 2, 7500m);
+        orders.Rows.Add(5, new DateTime(2024, 2, 1), 3, 18000m);
+        orders.Rows.Add(6, new DateTime(2024, 2, 5), 1, 9500m);
+        orders.Rows.Add(7, new DateTime(2024, 2, 10), 3, 6500m);
+    }
+    
+    static void CreateRelationship(DataSet ds)
+    {
+        DataTable customers = ds.Tables["Заказчики"];
+        DataTable orders = ds.Tables["Заказы"];
+        
+        DataRelation rel = new DataRelation(
+            "Rel_Customers_Orders",
+            customers.Columns["CustomerID"],
+            orders.Columns["CustomerID"],
+            true
+        );
+        ds.Relations.Add(rel);
+    }
+    
+    static void PrintAllOrders(DataSet ds)
+    {
+        DataTable orders = ds.Tables["Заказы"];
+        DataView dv = new DataView(orders);
+        dv.Sort = "OrderDate DESC";
+        
+        Console.WriteLine("ВСЕ ЗАКАЗЫ (DataView с сортировкой):");
+        PrintDataView(dv, orders.Columns.Count);
+    }
+    
+    static void PrintFilteredOrders(DataSet ds, string filterType)
+    {
+        DataTable orders = ds.Tables["Заказы"];
+        DataView dv = new DataView(orders);
+        
+        switch (filterType)
+        {
+            case "customerFilter":
+                dv.RowFilter = "CustomerID = 1";
+                dv.Sort = "OrderDate";
+                Console.WriteLine("Фильтр: CustomerID = 1 (Иван Петров)");
+                break;
+                
+            case "dateFilter":
+                dv.RowFilter = "OrderDate > #2024-01-20#";
+                dv.Sort = "OrderDate";
+                Console.WriteLine("Фильтр: OrderDate > 2024-01-20");
+                break;
+                
+            case "amountFilter":
+                dv.RowFilter = "Total > 10000";
+                dv.Sort = "Total DESC";
+                Console.WriteLine("Фильтр: Total > 10000₽");
+                break;
+                
+            case "combinedFilter":
+                dv.RowFilter = "CustomerID = 2 AND OrderDate > #2024-01-20# AND Total > 5000";
+                dv.Sort = "Total DESC, OrderDate";
+                Console.WriteLine("Комбинированный фильтр: CustomerID=2 И Date>2024-01-20 И Total>5000");
+                break;
+        }
+        
+        PrintDataView(dv, orders.Columns.Count);
+    }
+    
+    static void PrintCustomerOrdersViaRelation(DataSet ds, int customerID)
+    {
+        Console.WriteLine($"\nGetChildRows() для заказчика ID={customerID}:");
+        Console.WriteLine("═══════════════════════════════════════════════");
+        
+        DataTable customers = ds.Tables["Заказчики"];
+        DataRow customer = customers.Rows.Find(customerID);
+        
+        if (customer == null)
+        {
+            Console.WriteLine("Заказчик не найден");
+            return;
+        }
+        
+        Console.WriteLine($"Заказчик: {customer["CustomerName"]} ({customer["Email"]})");
+        DataRow[] customerOrders = customer.GetChildRows("Rel_Customers_Orders");
+        
+        if (customerOrders.Length == 0)
+        {
+            Console.WriteLine("Заказов нет");
+            return;
+        }
+        
+        Console.WriteLine("Заказы:");
+        Console.WriteLine("ID  | Дата       | Сумма");
+        Console.WriteLine("──────────────────────");
+        
+        foreach (DataRow order in customerOrders)
+        {
+            Console.WriteLine($"{order["OrderID"],3} | {((DateTime)order["OrderDate"]):dd.MM} | {((decimal)order["Total"]):7:N0}₽");
+        }
+    }
+    
+    static void PrintDataView(DataView dv, int columnCount)
+    {
+        Console.WriteLine($"Результатов: {dv.Count}");
+        if (dv.Count == 0)
+        {
+            Console.WriteLine("  ← ПУСТОЙ РЕЗУЛЬТАТ");
+            return;
+        }
+        
+        Console.WriteLine("ID  | Дата       | Клиент | Сумма    | Фильтр");
+        Console.WriteLine(new string('─', 45));
+        
+        DataTable orders = dv.Table;
+        DataTable customers = dv.Table.DataSet.Tables["Заказчики"];
+        
+        foreach (DataRowView rowView in dv)
+        {
+            DataRow row = rowView.Row;
+            int customerID = (int)row["CustomerID"];
+            
+            DataRow[] customerRows = customers.Select($"CustomerID = {customerID}");
+            string customerName = customerRows.Length > 0 ? 
+                (string)customerRows[0]["CustomerName"] : "НЕ ИЗВЕСТЕН";
+            
+            Console.WriteLine($"{row["OrderID"],3} | {((DateTime)row["OrderDate"]):dd.MM.yy} | " +
+                $"{customerName,-8} | {((decimal)row["Total"]):8:N0}₽");
+        }
+        Console.WriteLine();
+    }
+}
